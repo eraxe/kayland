@@ -18,8 +18,19 @@ try:
     from textual.containers import Container, Horizontal, Vertical, Grid, VerticalScroll
     from textual.widgets import (
         Header, Footer, Button, Static, Input, ListView, ListItem, Label,
-        Switch, DataTable, Select, TextArea, Tab
+        Switch, DataTable, TextArea, Tab
     )
+
+    # Import Select with proper error handling
+    try:
+        from textual.widgets import Select
+    except ImportError:
+        try:
+            from textual.widgets.select import Select
+        except ImportError:
+            # Last resort fallback
+            from textual.widgets._select import Select
+
     # For newer Textual versions, TabPane and TabbedContent might be in different locations
     # Try different import paths
     try:
@@ -264,6 +275,22 @@ TextArea {
 """
 
 
+# Utility functions
+def safe_select_value(select_widget, default=None):
+    """Safely get the value from a Select widget, handling possible errors"""
+    if not select_widget:
+        return default
+
+    try:
+        # Check if the widget has a value and it's not None
+        if hasattr(select_widget, 'value') and select_widget.value is not None:
+            return select_widget.value
+    except Exception as e:
+        logger.error(f"Error getting select value: {str(e)}")
+
+    return default
+
+
 class AppListItemData(ListItem):
     """A list item representing an application"""
 
@@ -442,11 +469,41 @@ class ShortcutScreen(ModalScreen):
         self.app_manager = app_manager
         self.shortcut_id = shortcut_id
         self.shortcut_data = None
+        self.all_apps = []
+        self.app_options = []
 
-        if shortcut_id:
-            self.shortcut_data = app_manager.get_shortcut_by_id(shortcut_id)
+        # Pre-load all apps and validate shortcut data
+        self._prepare_data()
+
+    def _prepare_data(self):
+        """Prepare and validate all data before rendering"""
+        # Get all available apps
+        self.all_apps = self.app_manager.get_all_apps()
+
+        # Create options list for the Select widget
+        self.app_options = []
+        for app in self.all_apps:
+            self.app_options.append((app["id"], app["name"]))
+
+        # If no apps are defined, add a placeholder option
+        if not self.app_options:
+            self.app_options.append(("no_apps", "No applications defined"))
+
+        # Load shortcut data if editing
+        if self.shortcut_id:
+            self.shortcut_data = self.app_manager.get_shortcut_by_id(self.shortcut_id)
+
+            # If shortcut data exists, verify the app still exists
+            if self.shortcut_data and "app_id" in self.shortcut_data:
+                app_id = self.shortcut_data["app_id"]
+                app_exists = any(app["id"] == app_id for app in self.all_apps)
+
+                # If app no longer exists, log a warning
+                if not app_exists:
+                    logger.warning(f"App ID {app_id} from shortcut {self.shortcut_id} no longer exists")
 
     def compose(self) -> ComposeResult:
+        """Compose the shortcut form"""
         is_edit = self.shortcut_data is not None
         title = "Edit Shortcut" if is_edit else "Add Shortcut"
 
@@ -455,24 +512,28 @@ class ShortcutScreen(ModalScreen):
 
             with Grid(classes="form-grid"):
                 yield Label("Application:")
-                app_input = Select(id="app_id")
-                for app in self.app_manager.get_all_apps():
-                    app_input.add_option(app["id"], app["name"])
-                if is_edit and self.shortcut_data:
-                    app_input.value = self.shortcut_data["app_id"]
-                yield app_input
+
+                # Get default value - carefully ensuring it exists in options
+                default_value = self._get_safe_default_value()
+
+                # Create the select widget with safe values
+                yield Select(
+                    id="app_id",
+                    options=self.app_options,
+                    value=default_value
+                )
 
                 yield Label("Shortcut Key:")
                 yield Input(
                     id="key",
-                    value=self.shortcut_data["key"] if is_edit else "",
+                    value=self.shortcut_data["key"] if is_edit and self.shortcut_data else "",
                     placeholder="e.g. alt+b, ctrl+shift+g"
                 )
 
                 yield Label("Description:")
                 yield Input(
                     id="description",
-                    value=self.shortcut_data.get("description", "") if is_edit else "",
+                    value=self.shortcut_data.get("description", "") if is_edit and self.shortcut_data else "",
                     placeholder="Optional description"
                 )
 
@@ -481,6 +542,27 @@ class ShortcutScreen(ModalScreen):
                 yield Button("Save", id="save", variant="success")
                 if is_edit:
                     yield Button("Delete", id="delete", variant="error")
+
+    def _get_safe_default_value(self) -> str:
+        """Get a safe default value that is guaranteed to be in the options list"""
+        is_edit = self.shortcut_data is not None
+
+        # No options case
+        if not self.app_options:
+            return ""
+
+        # Extract all valid values from options
+        valid_values = [opt[0] for opt in self.app_options]
+
+        # For edit mode, try to use the existing app_id
+        if is_edit and self.shortcut_data and "app_id" in self.shortcut_data:
+            app_id = self.shortcut_data["app_id"]
+            # Only use if it's in the valid values
+            if app_id in valid_values:
+                return app_id
+
+        # Default to first available option
+        return valid_values[0]
 
     def action_close_screen(self) -> None:
         """Close the screen"""
@@ -498,9 +580,17 @@ class ShortcutScreen(ModalScreen):
     def _save_shortcut(self) -> None:
         """Save the shortcut"""
         try:
-            app_id = self.query_one("#app_id", Select).value
+            # Safe access to the selected value
+            select = self.query_one("#app_id", Select)
+            app_id = safe_select_value(select)
             key = self.query_one("#key").value
             description = self.query_one("#description").value
+
+            # Check if we have the placeholder "no_apps" value
+            if app_id == "no_apps":
+                self.parent_app.notify("No applications defined. Please add an application first.",
+                                       severity="error")
+                return
 
             # Basic validation
             if not app_id or not key:
@@ -510,6 +600,11 @@ class ShortcutScreen(ModalScreen):
             # Validate shortcut format
             if not re.match(r'^[a-z0-9+]+$', key.lower()):
                 self.parent_app.notify("Invalid shortcut format. Use format like 'alt+b'", severity="error")
+                return
+
+            # Confirm app still exists
+            if not any(app["id"] == app_id for app in self.all_apps):
+                self.parent_app.notify("Selected application no longer exists", severity="error")
                 return
 
             # Update or create shortcut
@@ -546,7 +641,7 @@ class ShortcutScreen(ModalScreen):
             return
 
         try:
-            key = self.shortcut_data["key"]
+            key = self.shortcut_data["key"] if self.shortcut_data else "unknown"
             self.app_manager.remove_shortcut(self.shortcut_id)
             message = f"Deleted shortcut: {key}"
             self.parent_app.add_log_entry(message, "success")
@@ -856,13 +951,14 @@ class KaylandTUI(App):
 
             # Get shortcuts from app manager
             shortcuts = self.app_manager.get_shortcuts()
+            all_apps = {app["id"]: app for app in self.app_manager.get_all_apps()}
 
             for shortcut in shortcuts:
                 app_id = shortcut.get("app_id", "")
                 app_name = "Unknown"
 
                 # Get app name if available
-                app = self.app_manager.get_app_by_id(app_id)
+                app = all_apps.get(app_id)
                 if app:
                     app_name = app["name"]
 
@@ -931,9 +1027,12 @@ class KaylandTUI(App):
             if row < len(shortcuts):
                 self.selected_shortcut_id = shortcuts[row]["id"]
                 self.add_log_entry(f"Selected shortcut: {shortcuts[row]['key']}", "info")
+            else:
+                self.selected_shortcut_id = None
 
         except Exception as e:
             self.add_log_entry(f"Error selecting shortcut: {str(e)}", "error")
+            self.selected_shortcut_id = None
 
     def on_button_pressed(self, event: Button.Pressed) -> None:
         """Handle button presses"""
@@ -1015,8 +1114,21 @@ class KaylandTUI(App):
 
     def action_add_shortcut(self) -> None:
         """Add a new shortcut"""
-        self.add_log_entry("Opening add shortcut form", "info")
-        self.push_screen(ShortcutScreen(self, self.app_manager))
+        try:
+            # Check if there are any apps defined first
+            all_apps = self.app_manager.get_all_apps()
+            if not all_apps:
+                self.notify("Please add at least one application before creating shortcuts",
+                          severity="warning", timeout=5)
+                self.add_log_entry("Cannot add shortcut: No applications defined", "warning")
+                return
+
+            self.add_log_entry("Opening add shortcut form", "info")
+            self.push_screen(ShortcutScreen(self, self.app_manager))
+        except Exception as e:
+            error_msg = f"Error opening shortcut form: {str(e)}"
+            self.add_log_entry(error_msg, "error")
+            self.notify(error_msg, severity="error")
 
     def _edit_selected_shortcut(self) -> None:
         """Edit the selected shortcut"""
