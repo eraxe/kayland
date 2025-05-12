@@ -16,11 +16,21 @@ logger = logging.getLogger("kayland.tui")
 try:
     from textual.app import App, ComposeResult
     from textual.containers import Container, Horizontal, Vertical, Grid, VerticalScroll
-    from textual.widgets import Header, Footer, Button, Static, Input, ListView, ListItem, Label, Log
-    from textual.widgets import Switch, DataTable, Select, TextArea
+    from textual.widgets import (
+        Header, Footer, Button, Static, Input, ListView, ListItem, Label,
+        Switch, DataTable, Select, TextArea, Tab
+    )
+    # For newer Textual versions, TabPane and TabbedContent might be in different locations
+    # Try different import paths
+    try:
+        from textual.widgets import TabPane, TabbedContent
+    except ImportError:
+        try:
+            from textual.containers import TabPane, TabbedContent
+        except ImportError:
+            # Last resort, try from a different location
+            from textual.widgets.tabs import TabPane, TabbedContent
     from textual.screen import Screen, ModalScreen
-    from textual.containers import TabPane, TabbedContent
-    from textual.widgets.tab_list import Tab
     from textual import events
     from textual.binding import Binding
     from rich.text import Text
@@ -28,6 +38,7 @@ except ImportError as e:
     logger.error(f"Failed to import Textual: {str(e)}")
     print("Error: The Textual package is required for TUI mode.")
     print("Please install it with: pip install --user textual")
+    print("For Arch Linux users: 'sudo pacman -S python-textual' or 'yay -S python-textual'")
     sys.exit(1)
 
 # Import our modules - ensure we use the script directory
