@@ -142,6 +142,92 @@ create_initial_config() {
 }
 EOF
     fi
+
+    # Create shortcuts config if it doesn't exist
+    if [ ! -f "$CONFIG_DIR/shortcuts.json" ]; then
+        echo "Creating shortcuts configuration..."
+        cat > "$CONFIG_DIR/shortcuts.json" << EOF
+{
+    "shortcuts": []
+}
+EOF
+    fi
+}
+
+# Install the Kayland systemd service
+install_service() {
+    echo "Installing Kayland service..."
+    SERVICE_DIR="$HOME/.config/systemd/user"
+    SERVICE_FILE="$SERVICE_DIR/kayland.service"
+
+    # Create directory if it doesn't exist
+    mkdir -p "$SERVICE_DIR"
+
+    # Create service file
+    cat > "$SERVICE_FILE" << EOF
+[Unit]
+Description=Kayland KDE Window Manager Service
+After=network.target plasma-kwin_wayland.service plasma-kwin_x11.service
+PartOf=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 $SCRIPT_DIR/kayland.py service
+Restart=on-failure
+RestartSec=10
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=%h/.Xauthority
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=graphical-session.target
+EOF
+
+    # Reload systemd and enable service
+    systemctl --user daemon-reload
+    systemctl --user enable kayland.service
+    systemctl --user start kayland.service
+
+    echo -e "${GREEN}Kayland service installed and started.${NC}"
+    echo "You can check the service status with: kayland service status"
+}
+
+# Uninstall the Kayland systemd service
+uninstall_service() {
+    echo "Stopping and removing Kayland service..."
+
+    # Check if service exists
+    if [ -f "$HOME/.config/systemd/user/kayland.service" ]; then
+        # Stop and disable service
+        systemctl --user stop kayland.service 2>/dev/null || true
+        systemctl --user disable kayland.service 2>/dev/null || true
+
+        # Remove service file
+        rm -f "$HOME/.config/systemd/user/kayland.service"
+
+        # Reload systemd
+        systemctl --user daemon-reload
+
+        echo -e "${GREEN}Kayland service removed.${NC}"
+    else
+        echo "Kayland service not installed, skipping service removal."
+    fi
+}
+
+# Check the status of the Kayland service
+service_status() {
+    echo "Checking Kayland service status..."
+
+    if systemctl --user is-active kayland.service >/dev/null 2>&1; then
+        echo -e "${GREEN}Kayland service is running.${NC}"
+        systemctl --user status kayland.service
+        return 0
+    else
+        echo -e "${RED}Kayland service is not running.${NC}"
+        systemctl --user status kayland.service
+        return 1
+    fi
 }
 
 # Clean previous installation
@@ -160,6 +246,9 @@ clean_install() {
 # Uninstall Kayland
 uninstall() {
     echo "Uninstalling Kayland..."
+
+    # Remove systemd service
+    uninstall_service
 
     # Remove executable
     rm -f "$INSTALL_DIR/kayland"
@@ -192,6 +281,10 @@ show_help() {
     echo "  --update        Update Kayland"
     echo "  --clean         Clean previous installation before installing"
     echo "  --purge         Clean previous installation including configuration"
+    echo "  --service       Install Kayland as a systemd service"
+    echo "  --no-service    Do not install the systemd service"
+    echo "  --service-only  Only install/update the systemd service"
+    echo "  --service-status Check the status of the Kayland service"
     echo ""
 }
 
@@ -199,44 +292,83 @@ show_help() {
 main() {
     echo -e "${GREEN}Kayland - KDE Wayland Window Manager${NC}"
 
-    # Check for help flag
-    if [ "$1" == "--help" ]; then
-        show_help
+    # Flag for service installation
+    INSTALL_SERVICE=false
+    SKIP_SERVICE=false
+    SERVICE_ONLY=false
+    INSTALL_MODE="install"
+
+    # Parse arguments
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --help)
+                show_help
+                exit 0
+                ;;
+            --uninstall)
+                uninstall
+                ;;
+            --clean)
+                clean_install
+                ;;
+            --purge)
+                clean_install "--purge"
+                ;;
+            --update)
+                echo "Updating Kayland..."
+                clean_install
+                INSTALL_MODE="update"
+                ;;
+            --service)
+                INSTALL_SERVICE=true
+                ;;
+            --no-service)
+                SKIP_SERVICE=true
+                ;;
+            --service-only)
+                SERVICE_ONLY=true
+                INSTALL_SERVICE=true
+                ;;
+            --service-status)
+                service_status
+                exit $?
+                ;;
+            *)
+                echo -e "${RED}Unknown option: $1${NC}"
+                show_help
+                exit 1
+                ;;
+        esac
+        shift
+    done
+
+    # Handle service-only installation
+    if [ "$SERVICE_ONLY" = true ]; then
+        install_service
         exit 0
     fi
 
-    # Check for uninstall flag
-    if [ "$1" == "--uninstall" ]; then
-        uninstall
-    fi
-
-    # Check for clean flag
-    if [ "$1" == "--clean" ]; then
-        clean_install
-        shift
-    fi
-
-    # Check for purge flag
-    if [ "$1" == "--purge" ]; then
-        clean_install "--purge"
-        shift
-    fi
-
-    # Check for update flag
-    if [ "$1" == "--update" ]; then
-        echo "Updating Kayland..."
-        clean_install
-    else
-        echo "Installing Kayland..."
-    fi
-
+    # Normal installation process
     check_environment
     check_python_dependencies
     create_directories
     install_files
     create_initial_config
 
-    if [ "$1" == "--update" ]; then
+    # Install service if requested
+    if [ "$INSTALL_SERVICE" = true ]; then
+        install_service
+    elif [ "$SKIP_SERVICE" = false ]; then
+        # Ask if user wants to install the service
+        read -p "Do you want to install Kayland as a systemd service? (y/N): " install_svc
+        if [[ "$install_svc" == "y" || "$install_svc" == "Y" ]]; then
+            install_service
+        else
+            echo "Skipping service installation."
+        fi
+    fi
+
+    if [ "$INSTALL_MODE" == "update" ]; then
         echo -e "${GREEN}Kayland has been updated successfully!${NC}"
     else
         echo -e "${GREEN}Kayland has been installed successfully!${NC}"

@@ -6,6 +6,7 @@ import os
 import logging
 import uuid
 import re
+import subprocess
 from typing import Dict, List, Optional, Any, Union
 
 
@@ -27,32 +28,71 @@ class AppManager:
     def _load_apps(self) -> List[Dict[str, Any]]:
         """Load application definitions from the config file"""
         try:
+            self.logger.debug(f"Attempting to load apps from {self.config_file}")
+
             if os.path.exists(self.config_file):
+                # Check if file is empty
+                if os.path.getsize(self.config_file) == 0:
+                    self.logger.warning(f"Config file is empty: {self.config_file}")
+                    return []
+
                 with open(self.config_file, 'r') as f:
-                    data = json.load(f)
-                    # Validate structure
-                    if not isinstance(data, dict) or "apps" not in data:
-                        self.logger.warning(f"Invalid config structure in {self.config_file}, resetting")
+                    file_content = f.read()
+                    self.logger.debug(f"Loaded file content: {file_content[:200]}...")  # First 200 chars
+
+                    try:
+                        data = json.loads(file_content)
+
+                        # Validate structure
+                        if not isinstance(data, dict):
+                            self.logger.warning(
+                                f"Invalid config structure (not a dict) in {self.config_file}, resetting")
+                            return []
+
+                        if "apps" not in data:
+                            self.logger.warning(
+                                f"Invalid config structure (no 'apps' key) in {self.config_file}, resetting")
+                            return []
+
+                        if not isinstance(data["apps"], list):
+                            self.logger.warning(f"Invalid apps data (not a list) in {self.config_file}, resetting")
+                            return []
+
+                        self.logger.info(f"Successfully loaded {len(data['apps'])} apps from {self.config_file}")
+                        return data.get("apps", [])
+                    except json.JSONDecodeError as je:
+                        self.logger.error(f"Failed to parse config: {str(je)}")
+
+                        # Log the actual content that failed to parse
+                        self.logger.error(f"Content that failed to parse: {file_content}")
+
+                        # Check for backup
+                        backup_file = f"{self.config_file}.bak"
+                        if os.path.exists(backup_file):
+                            self.logger.info(f"Attempting to load from backup: {backup_file}")
+                            try:
+                                with open(backup_file, 'r') as bf:
+                                    backup_data = json.load(bf)
+                                    if isinstance(backup_data, dict) and "apps" in backup_data:
+                                        self.logger.info(
+                                            f"Successfully loaded {len(backup_data['apps'])} apps from backup")
+                                        return backup_data.get("apps", [])
+                            except Exception as be:
+                                self.logger.error(f"Failed to load from backup: {str(be)}")
+
+                        # Create backup of corrupted file
+                        corrupted_file = f"{self.config_file}.corrupted"
+                        import shutil
+                        try:
+                            shutil.copy2(self.config_file, corrupted_file)
+                            self.logger.info(f"Created backup of corrupted config at {corrupted_file}")
+                        except Exception as ex:
+                            self.logger.error(f"Failed to create backup of corrupted file: {str(ex)}")
+
                         return []
-                    if not isinstance(data["apps"], list):
-                        self.logger.warning(f"Invalid apps data in {self.config_file}, resetting")
-                        return []
-                    return data.get("apps", [])
             else:
                 self.logger.info(f"Config file not found: {self.config_file}, will create on first save")
                 return []
-        except json.JSONDecodeError as je:
-            self.logger.error(f"Failed to parse config: {str(je)}")
-            self.logger.info("Creating backup of corrupted config file")
-            if os.path.exists(self.config_file):
-                backup_file = f"{self.config_file}.bak"
-                try:
-                    import shutil
-                    shutil.copy2(self.config_file, backup_file)
-                    self.logger.info(f"Created backup at {backup_file}")
-                except Exception as ex:
-                    self.logger.error(f"Failed to create backup: {str(ex)}")
-            return []
         except Exception as e:
             self.logger.error(f"Failed to load config: {str(e)}")
             return []
@@ -60,21 +100,60 @@ class AppManager:
     def _save_apps(self) -> bool:
         """Save application definitions to the config file"""
         try:
+            # Create config directory if it doesn't exist
             os.makedirs(self.config_dir, exist_ok=True)
+
+            # Log what we're saving
+            self.logger.debug(f"Saving {len(self.apps)} apps to {self.config_file}")
+
             # Create a temporary file first to avoid corruption if writing fails
             temp_file = f"{self.config_file}.tmp"
-            with open(temp_file, 'w') as f:
-                json.dump({"apps": self.apps}, f, indent=4)
+            try:
+                with open(temp_file, 'w') as f:
+                    json_data = {"apps": self.apps}
+                    json.dump(json_data, f, indent=4)
 
-            # If we got here, writing was successful, so move the temp file to the actual file
-            import os
-            if os.path.exists(self.config_file):
-                os.replace(temp_file, self.config_file)
-            else:
+                    # Ensure data is written to disk
+                    f.flush()
+                    os.fsync(f.fileno())
+
+                # Log the temp file content for debugging
+                with open(temp_file, 'r') as f:
+                    temp_content = f.read()
+                    self.logger.debug(f"Temp file content: {temp_content[:200]}...")  # First 200 chars
+
+                # If we got here, writing was successful, so move the temp file to the actual file
+                if os.path.exists(self.config_file):
+                    # Create a backup of the current file
+                    backup_file = f"{self.config_file}.bak"
+                    if os.path.exists(backup_file):
+                        os.remove(backup_file)
+                    os.rename(self.config_file, backup_file)
+                    self.logger.debug(f"Created backup at {backup_file}")
+
+                # Now rename the temp file to the actual file
                 os.rename(temp_file, self.config_file)
-            return True
+                self.logger.info(f"Successfully saved apps to {self.config_file}")
+
+                # Verify the file was saved correctly
+                if os.path.exists(self.config_file):
+                    with open(self.config_file, 'r') as f:
+                        saved_data = json.load(f)
+                        self.logger.debug(f"Verified saved data: {len(saved_data.get('apps', []))} apps")
+
+                return True
+            except Exception as e:
+                self.logger.error(f"Failed to save config: {str(e)}")
+                # Try a direct write as fallback
+                with open(self.config_file, 'w') as f:
+                    json.dump({"apps": self.apps}, f, indent=4)
+                self.logger.info("Used fallback direct save method")
+                return True
         except Exception as e:
             self.logger.error(f"Failed to save config: {str(e)}")
+            # Last resort: print the data that should have been saved
+            print(f"ERROR saving apps: {str(e)}")
+            print(f"Apps data: {json.dumps({'apps': self.apps}, indent=2)}")
             return False
 
     def validate_app_data(self, name: str, class_pattern: str) -> Union[None, str]:
@@ -266,3 +345,220 @@ class AppManager:
                 raise
         else:
             return self.apps
+
+    # Shortcut Management Methods
+    def get_shortcuts(self) -> List[Dict[str, Any]]:
+        """Get all configured shortcuts"""
+        try:
+            shortcuts_file = os.path.join(self.config_dir, "shortcuts.json")
+            if os.path.exists(shortcuts_file):
+                with open(shortcuts_file, 'r') as f:
+                    data = json.load(f)
+                    return data.get("shortcuts", [])
+            return []
+        except Exception as e:
+            self.logger.error(f"Failed to load shortcuts: {str(e)}")
+            return []
+
+    def get_shortcut_by_id(self, shortcut_id: str) -> Optional[Dict[str, Any]]:
+        """Get shortcut by ID"""
+        if not shortcut_id:
+            return None
+
+        shortcuts = self.get_shortcuts()
+        for shortcut in shortcuts:
+            if shortcut.get("id") == shortcut_id:
+                return shortcut
+        return None
+
+    def add_shortcut(self, app_id: str, key: str, description: str = "") -> Dict[str, Any]:
+        """Add a keyboard shortcut for an application"""
+        app = self.get_app_by_id(app_id)
+        if not app:
+            raise ValueError(f"App not found with ID: {app_id}")
+
+        # Validate shortcut format (e.g., ctrl+alt+a)
+        if not re.match(r'^[a-z0-9+]+$', key.lower()):
+            raise ValueError(f"Invalid shortcut format: {key}")
+
+        # Check for duplicate
+        shortcuts = self.get_shortcuts()
+        if any(s.get("key", "").lower() == key.lower() for s in shortcuts):
+            raise ValueError(f"Shortcut '{key}' already exists")
+
+        shortcut = {
+            "id": str(uuid.uuid4()),
+            "app_id": app_id,
+            "key": key,
+            "description": description
+        }
+
+        shortcuts.append(shortcut)
+
+        try:
+            shortcuts_file = os.path.join(self.config_dir, "shortcuts.json")
+            with open(shortcuts_file, 'w') as f:
+                json.dump({"shortcuts": shortcuts}, f, indent=4)
+
+            # Try to register with kdotool if possible
+            try:
+                self._register_kdotool_shortcut(shortcut, app)
+            except Exception as e:
+                self.logger.warning(f"Failed to register shortcut with kdotool: {str(e)}")
+
+            # Notify the service if it's running
+            self._notify_service("reload")
+
+        except Exception as e:
+            self.logger.error(f"Failed to save shortcut: {str(e)}")
+            raise
+
+        return shortcut
+
+    def update_shortcut(self, shortcut_id: str, app_id: str = None, key: str = None,
+                       description: str = None) -> Optional[Dict[str, Any]]:
+        """Update an existing shortcut"""
+        shortcuts = self.get_shortcuts()
+        shortcut = None
+
+        # Find the shortcut to update
+        for i, s in enumerate(shortcuts):
+            if s.get("id") == shortcut_id:
+                shortcut = s
+                shortcut_index = i
+                break
+
+        if not shortcut:
+            return None
+
+        # Validate new key if provided
+        if key and key != shortcut.get("key"):
+            if not re.match(r'^[a-z0-9+]+$', key.lower()):
+                raise ValueError(f"Invalid shortcut format: {key}")
+
+            # Check for duplicate
+            if any(s.get("key", "").lower() == key.lower() and s.get("id") != shortcut_id
+                   for s in shortcuts):
+                raise ValueError(f"Shortcut '{key}' already exists")
+
+        # Validate app_id if provided
+        if app_id and app_id != shortcut.get("app_id"):
+            app = self.get_app_by_id(app_id)
+            if not app:
+                raise ValueError(f"App not found with ID: {app_id}")
+
+        # Update fields
+        if app_id is not None:
+            shortcut["app_id"] = app_id
+        if key is not None:
+            shortcut["key"] = key
+        if description is not None:
+            shortcut["description"] = description
+
+        # Save changes
+        try:
+            shortcuts[shortcut_index] = shortcut
+            shortcuts_file = os.path.join(self.config_dir, "shortcuts.json")
+            with open(shortcuts_file, 'w') as f:
+                json.dump({"shortcuts": shortcuts}, f, indent=4)
+
+            # Try to update registration with kdotool
+            if app_id is not None or key is not None:
+                try:
+                    app = self.get_app_by_id(shortcut["app_id"])
+                    self._register_kdotool_shortcut(shortcut, app)
+                except Exception as e:
+                    self.logger.warning(f"Failed to update shortcut with kdotool: {str(e)}")
+
+            # Notify the service if it's running
+            self._notify_service("reload")
+
+            return shortcut
+
+        except Exception as e:
+            self.logger.error(f"Failed to update shortcut: {str(e)}")
+            raise
+
+    def remove_shortcut(self, shortcut_id: str) -> bool:
+        """Remove a keyboard shortcut"""
+        shortcuts = self.get_shortcuts()
+        for i, shortcut in enumerate(shortcuts):
+            if shortcut.get("id") == shortcut_id:
+                removed = shortcuts.pop(i)
+
+                try:
+                    shortcuts_file = os.path.join(self.config_dir, "shortcuts.json")
+                    with open(shortcuts_file, 'w') as f:
+                        json.dump({"shortcuts": shortcuts}, f, indent=4)
+
+                    # Try to unregister with kdotool
+                    try:
+                        self._unregister_kdotool_shortcut(removed)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to unregister shortcut with kdotool: {str(e)}")
+
+                    # Notify the service if it's running
+                    self._notify_service("reload")
+                    return True
+
+                except Exception as e:
+                    self.logger.error(f"Failed to remove shortcut: {str(e)}")
+                    raise
+
+        return False
+
+    def _register_kdotool_shortcut(self, shortcut: Dict[str, Any], app: Dict[str, Any]) -> bool:
+        """Register a shortcut with kdotool"""
+        try:
+            shortcut_name = f"kayland_{shortcut['id']}"
+            key = shortcut["key"]
+            app_id = app["id"]
+            class_pattern = app["class_pattern"]
+            command = app["command"]
+
+            # Use kdotool to register the shortcut
+            cmd = [
+                "kdotool",
+                "--shortcut", key,
+                "--name", shortcut_name,
+                "search", "--class", class_pattern
+            ]
+
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            return result.returncode == 0
+
+        except Exception as e:
+            self.logger.error(f"Failed to register shortcut with kdotool: {str(e)}")
+            return False
+
+    def _unregister_kdotool_shortcut(self, shortcut: Dict[str, Any]) -> bool:
+        """Unregister a shortcut with kdotool"""
+        try:
+            shortcut_name = f"kayland_{shortcut['id']}"
+
+            # Use kdotool to unregister the shortcut
+            cmd = ["kdotool", "--remove", shortcut_name]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            return result.returncode == 0
+
+        except Exception as e:
+            self.logger.error(f"Failed to unregister shortcut with kdotool: {str(e)}")
+            return False
+
+    def _notify_service(self, command: str) -> bool:
+        """Send a command to the service if it's running"""
+        try:
+            socket_path = os.path.expanduser("~/.cache/kayland/kayland.sock")
+            if not os.path.exists(socket_path):
+                return False
+
+            import socket
+            client = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            client.connect(socket_path)
+            client.sendall(f"{command}:".encode('utf-8'))
+            client.close()
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to notify service: {str(e)}")
+            return False
