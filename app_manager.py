@@ -269,6 +269,16 @@ class AppManager:
         self._save_apps()
         return app
 
+    def update_app_attribute(self, app_id: str, attribute: str, value: Any) -> Optional[Dict[str, Any]]:
+        """Update a specific attribute of an app"""
+        app = self.get_app_by_id(app_id)
+        if not app:
+            return None
+
+        app[attribute] = value
+        self._save_apps()
+        return app
+
     def delete_app(self, app_id: str) -> bool:
         """Delete an application definition"""
         app = self.get_app_by_id(app_id)
@@ -416,7 +426,7 @@ class AppManager:
         return shortcut
 
     def update_shortcut(self, shortcut_id: str, app_id: str = None, key: str = None,
-                       description: str = None) -> Optional[Dict[str, Any]]:
+                        description: str = None) -> Optional[Dict[str, Any]]:
         """Update an existing shortcut"""
         shortcuts = self.get_shortcuts()
         shortcut = None
