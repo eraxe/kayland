@@ -65,29 +65,59 @@ Screen {
     height: 50%;
 }
 
+/* Enhanced button styling to ensure text visibility */
 Button {
     background: #00fff5;
-    color: #3b1f5f;
+    color: #000000 !important; /* Force black text */
     margin: 0 1;
     height: 1;
+    text-style: bold;
+}
+
+/* Target all possible button label elements */
+Button Label, 
+Button > .button--label,
+Button > .label,
+Button > * {
+    color: #000000 !important; /* Force black text for maximum contrast */
+    text-style: bold;
+    background: transparent;
 }
 
 Button:hover {
     background: #f615f6;
-    color: #ffffff;
+}
+
+Button:hover Label, 
+Button:hover > .button--label,
+Button:hover > .label,
+Button:hover > * {
+    color: #ffffff !important;  /* White text on hover */
 }
 
 Button:focus {
     background: #f615f6;
-    color: #ffffff;
     border: solid #ffffff;
+}
+
+Button:focus Label, 
+Button:focus > .button--label,
+Button:focus > .label,
+Button:focus > * {
+    color: #ffffff !important;  /* White text on focus */
 }
 
 .add-button {
     background: #f615f6;
-    color: #ffffff;
     width: 3;
     margin-left: 1;
+}
+
+.add-button Label, 
+.add-button > .button--label,
+.add-button > .label,
+.add-button > * {
+    color: #ffffff !important;  /* White text for add button */
 }
 
 Input {

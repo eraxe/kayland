@@ -174,10 +174,11 @@ class KaylandTUI(App):
     def on_mount(self):
         """Called when the app is mounted"""
         try:
+            self.add_log_entry("Starting Kayland TUI...", "info")
             self._refresh_app_list()
             self._refresh_shortcut_list()
             self._update_settings_info()
-            self.add_log_entry("Kayland started successfully", "info")
+            self.add_log_entry("Kayland TUI started successfully", "success")
 
             # Ensure tab navigation works
             tabs = self.query_one("#main-tabs", TabbedContent)
@@ -352,39 +353,41 @@ class KaylandTUI(App):
             detail_content = self.query_one("#app-detail-content")
 
             if app:
-                content = Text("\n")
-                content.append(Text("Name: ", style="#ff00a0"))
-                content.append(Text(f"{app['name']}\n\n", style="#ffffff"))
+                # Create a formatted string with markup instead of a Text object
+                content_lines = []
+                content_lines.append("[#ff00a0]Name:[/] " + f"[#ffffff]{app['name']}[/]")
+                content_lines.append("")
+                content_lines.append("[#ff00a0]Class Pattern:[/] " + f"[#ffffff]{app['class_pattern']}[/]")
+                content_lines.append("")
+                content_lines.append("[#ff00a0]Command:[/] " + f"[#ffffff]{app['command']}[/]")
+                content_lines.append("")
 
-                content.append(Text("Class Pattern: ", style="#ff00a0"))
-                content.append(Text(f"{app['class_pattern']}\n\n", style="#ffffff"))
-
-                content.append(Text("Command: ", style="#ff00a0"))
-                content.append(Text(f"{app['command']}\n\n", style="#ffffff"))
-
-                content.append(Text("Aliases: ", style="#ff00a0"))
-                content.append(Text(f"{', '.join(app.get('aliases', []))}\n\n", style="#ffffff"))
+                aliases = ", ".join(app.get('aliases', []))
+                content_lines.append("[#ff00a0]Aliases:[/] " + f"[#ffffff]{aliases}[/]")
+                content_lines.append("")
 
                 # Display desktop file path if available
                 desktop_file = app.get('desktop_file', '')
                 if desktop_file:
-                    content.append(Text("Desktop File: ", style="#ff00a0"))
-                    content.append(Text(f"{desktop_file}\n\n", style="#ffffff"))
+                    content_lines.append("[#ff00a0]Desktop File:[/] " + f"[#ffffff]{desktop_file}[/]")
+                    content_lines.append("")
 
-                content.append(Text("ID: ", style="#ff00a0"))
-                content.append(Text(f"{app['id']}", style="#ffffff"))
+                content_lines.append("[#ff00a0]ID:[/] " + f"[#ffffff]{app['id']}[/]")
 
                 # Check for shortcuts associated with this app
                 shortcuts = self.app_manager.get_shortcuts()
                 app_shortcuts = [s for s in shortcuts if s.get("app_id") == app["id"]]
                 if app_shortcuts:
-                    content.append(Text("\n\nShortcuts:", style="#ff00a0"))
+                    content_lines.append("")
+                    content_lines.append("[#ff00a0]Shortcuts:[/]")
                     for shortcut in app_shortcuts:
-                        content.append(Text(f"\n{shortcut.get('key', '')}", style="#ffffff"))
+                        shortcut_line = f"[#ffffff]{shortcut.get('key', '')}[/]"
                         if shortcut.get("description"):
-                            content.append(Text(f" - {shortcut.get('description', '')}", style="#aaaaaa"))
+                            shortcut_line += f" [#aaaaaa]- {shortcut.get('description', '')}[/]"
+                        content_lines.append(shortcut_line)
 
-                detail_content.update(content)
+                # Update the content
+                detail_content.update("\n".join(content_lines))
             else:
                 detail_content.update(
                     "\n  No application selected.\n\n  Select an application from the list or add a new one.")
@@ -729,30 +732,31 @@ class KaylandTUI(App):
     def on_screen_resume(self, event: events.ScreenResume) -> None:
         """Called when returning to the main screen"""
         try:
+            # First refresh data to ensure UI is up-to-date
+            self._refresh_app_list()
+            self._refresh_shortcut_list()
+
             # Check if the modal screen passed a value indicating changes were made
             if hasattr(event, 'value') and event.value:
                 # Check for selected option from dropdown
-                if event.value.get('selected', None) == "Add manually":
-                    self.add_log_entry("Opening add application form", "info")
-                    self.push_screen(AppFormScreen(self, self.app_manager))
-                elif event.value.get('selected', None) == "Add from .desktop":
-                    self.add_log_entry("Opening desktop file browser", "info")
-                    self.push_screen(DesktopFileScreen(self, self.settings.get("desktop_file_dir")))
-                # Check for desktop file selection
-                elif event.value.get('desktop_file', None):
-                    self.add_log_entry(f"Adding application from desktop file", "info")
-                    self.push_screen(AppFormScreen(self, self.app_manager, desktop_file=event.value['desktop_file']))
-                # Check for changes to refresh
-                elif event.value.get('changes_made', False):
-                    self.add_log_entry("Changes detected, refreshing data", "info")
-                    self._refresh_app_list()
-                    self._refresh_shortcut_list()
-                    self._update_settings_info()
+                if isinstance(event.value, dict):
+                    if event.value.get('selected', None) == "Add manually":
+                        self.add_log_entry("Opening add application form", "info")
+                        self.push_screen(AppFormScreen(self, self.app_manager))
+                    elif event.value.get('selected', None) == "Add from .desktop":
+                        self.add_log_entry("Opening desktop file browser", "info")
+                        self.push_screen(DesktopFileScreen(self, self.settings.get("desktop_file_dir")))
+                    # Check for desktop file selection
+                    elif event.value.get('desktop_file', None):
+                        self.add_log_entry(f"Adding application from desktop file", "info")
+                        self.push_screen(
+                            AppFormScreen(self, self.app_manager, desktop_file=event.value['desktop_file']))
+                    # Check for changes to refresh
+                    elif event.value.get('changes_made', False):
+                        self.add_log_entry("Changes detected, refreshing data", "info")
+                        self._update_settings_info()
         except Exception as e:
             self.add_log_entry(f"Error in screen resume: {str(e)}", "error")
-            # Still try to refresh in case something changed
-            self._refresh_app_list()
-            self._refresh_shortcut_list()
 
     def _show_about(self) -> None:
         """Show information about the application"""

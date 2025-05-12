@@ -59,11 +59,11 @@ class ServiceStatusWidget(Container):
 
             if result.stdout.strip() == "active":
                 self.service_running = True
-                status_text.update(Text("● SERVICE RUNNING", style="bold green"))
+                status_text.update("● SERVICE RUNNING", style="bold green")
                 self.parent_app.add_log_entry("Kayland service is running", "success")
             else:
                 self.service_running = False
-                status_text.update(Text("● SERVICE STOPPED", style="bold red"))
+                status_text.update("● SERVICE STOPPED", style="bold red")
                 self.parent_app.add_log_entry("Kayland service is not running", "warning")
 
             # Update buttons based on service status

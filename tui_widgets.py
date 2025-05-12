@@ -9,7 +9,6 @@ from textual.widgets import Static, ListItem
 from textual.reactive import reactive
 from textual.widget import Widget
 from textual.containers import Container, Horizontal, Vertical
-from rich.text import Text
 
 logger = logging.getLogger("kayland.tui.widgets")
 
@@ -29,8 +28,9 @@ class AppListItemData(ListItem):
     def compose(self):
         aliases = self._app_data.get('aliases', [])
         alias_text = f" ({', '.join(aliases)})" if aliases else ""
-        yield Static(Text(f"{self._app_data['name']}", style="#00fff5") +
-                     Text(alias_text, style="#ff00a0"))
+        # Simple plain text approach for compatibility
+        name = self._app_data['name']
+        yield Static(f"{name}{alias_text}")
 
     def on_click(self) -> None:
         self._select_app()
@@ -64,12 +64,10 @@ class AppSelectedMessage(events.Message):
 class LogDisplay(Widget):
     """A widget to display log entries"""
 
-    log_entries = reactive([])
-    max_entries = reactive(100)
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.auto_scroll = True
+        self.log_entries = []  # Simple list to store log entries
+        self.max_entries = 100
 
     def compose(self):
         yield Static(id="log-content")
@@ -83,28 +81,12 @@ class LogDisplay(Widget):
 
         try:
             timestamp = time.strftime("%H:%M:%S")
-            style = {
-                "info": "#00fff5",
-                "error": "#ff0000",
-                "warning": "#ffff00",
-                "success": "#00ff00"
-            }.get(level, "#ffffff")
 
-            # For multi-line messages, split and format each line
-            if "\n" in message:
-                lines = message.split("\n")
-                entry = Text(f"[{timestamp}] ", style="#aaaaaa")
-                entry.append(Text(lines[0], style=style))
+            # Create a simple formatted entry string - no rich formatting
+            formatted_entry = f"[{timestamp}] {message}"
 
-                # Format the remaining lines with indentation
-                for line in lines[1:]:
-                    self.log_entries.insert(0, Text("    " + line, style=style))
-
-                self.log_entries.insert(0, entry)
-            else:
-                entry = Text(f"[{timestamp}] ", style="#aaaaaa")
-                entry.append(Text(message, style=style))
-                self.log_entries.insert(0, entry)  # Insert at top for newest first
+            # Add at the beginning (most recent first)
+            self.log_entries.insert(0, formatted_entry)
 
             # Always log to console for debugging
             print(f"[{level.upper()}] {message}")
@@ -127,11 +109,8 @@ class LogDisplay(Widget):
         try:
             log_content = self.query_one("#log-content", Static)
             if log_content:
-                log_text = Text("\n").join(self.log_entries[:self.max_entries])
-                log_content.update(log_text)
+                # Join log entries with newlines - plain text, no markup
+                content = "\n".join(self.log_entries)
+                log_content.update(content)
         except Exception as e:
             logger.error(f"Error updating log display: {str(e)}")
-
-    def watch_log_entries(self) -> None:
-        """Watch for changes to log entries"""
-        self._update_display()

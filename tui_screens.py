@@ -81,6 +81,8 @@ class ConfirmDialog(ModalScreen):
         super().__init__()
         self.title = title
         self.message = message
+        # Set a background with opacity for the modal effect
+        self.styles.background = "rgba(0, 0, 0, 0.7)"
 
     def compose(self):
         with Container(classes="form-container"):
@@ -116,6 +118,8 @@ class AppFormScreen(ModalScreen):
         self.app_data = None
         self.desktop_file = desktop_file
         self.show_shortcut = False
+        # Set a background with opacity for the modal effect
+        self.styles.background = "rgba(0, 0, 0, 0.7)"
 
         if app_id:
             self.app_data = app_manager.get_app_by_id(app_id)
@@ -449,6 +453,8 @@ class DesktopFileScreen(ModalScreen):
         self.parent_app = parent_app
         self.desktop_dir = desktop_dir or os.path.expanduser("~/.local/share/applications")
         self.selected_file = None
+        # Set a background with opacity for the modal effect
+        self.styles.background = "rgba(0, 0, 0, 0.7)"
 
     def compose(self):
         with Container(classes="form-container"):
@@ -571,6 +577,8 @@ class ShortcutScreen(ModalScreen):
         self.shortcut_data = None
         self.all_apps = []
         self.app_options = []
+        # Set a background with opacity for the modal effect
+        self.styles.background = "rgba(0, 0, 0, 0.7)"
 
         # Pre-load all apps and validate shortcut data
         self._prepare_data()
@@ -763,6 +771,8 @@ class SettingsScreen(ModalScreen):
         super().__init__()
         self.parent_app = parent_app
         self.settings = settings
+        # Set a background with opacity for the modal effect
+        self.styles.background = "rgba(0, 0, 0, 0.7)"
 
     def compose(self):
         with Container(classes="form-container"):
