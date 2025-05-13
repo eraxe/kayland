@@ -1,5 +1,5 @@
 #!/bin/bash
-# install.sh - Installer for Kayland
+# install.sh - Installer for Kayland (Arch Linux optimized)
 
 set -e
 
@@ -7,6 +7,7 @@ REPO_URL="https://raw.githubusercontent.com/eraxe/kayland/main"
 INSTALL_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/kayland"
 SCRIPT_DIR="$HOME/.local/share/kayland"
+DESKTOP_DIR="$HOME/.local/share/applications"
 CURRENT_DIR="$(pwd)"
 
 # Colors for output
@@ -44,21 +45,64 @@ check_python_dependencies() {
         exit 1
     fi
 
-    # Check for pip
-    if ! command -v pip3 &> /dev/null; then
-        echo -e "${YELLOW}Warning: pip3 is not found. Will attempt to install dependencies without it.${NC}"
-        HAS_PIP=false
-    else
-        HAS_PIP=true
+    # Check for PySide6 (required for GUI)
+    if ! python3 -c "import PySide6" &> /dev/null; then
+        echo "PySide6 package not found. This is required for the GUI."
+
+        # Check if this is Arch Linux
+        if command -v pacman &> /dev/null; then
+            echo "Detected Arch Linux system."
+            echo "PySide6 should be installed via pacman instead of pip for better system integration."
+            read -p "Do you want to try installing PySide6 with pacman? (y/N): " install_pyside6_pacman
+            if [[ "$install_pyside6_pacman" == "y" || "$install_pyside6_pacman" == "Y" ]]; then
+                echo "Running: sudo pacman -S python-pyside6"
+                sudo pacman -S python-pyside6
+            else
+                echo -e "${YELLOW}Note: GUI mode will not be available without PySide6.${NC}"
+                echo "You can install it later with: sudo pacman -S python-pyside6"
+            fi
+        else
+            # Not Arch Linux, try pip
+            if command -v pip3 &> /dev/null; then
+                read -p "Do you want to install PySide6 now using pip? (y/N): " install_pyside6
+            if [[ "$install_pyside6" == "y" || "$install_pyside6" == "Y" ]]; then
+                echo "Installing PySide6 package..."
+                pip3 install --user pyside6
+            else
+                echo -e "${YELLOW}Note: GUI mode will not be available without PySide6.${NC}"
+                echo "You can install it later with: pip3 install --user pyside6"
+            fi
+        else
+            echo -e "${YELLOW}Note: GUI mode will not be available without PySide6.${NC}"
+            echo "Please install PySide6 manually using your package manager."
+            fi
+        fi
     fi
 
-    # Install Textual if not already installed
+    # Install Textual if not already installed (for backwards compatibility)
     if ! python3 -c "import textual" &> /dev/null; then
-        echo "Installing Textual package..."
-        if [ "$HAS_PIP" = true ]; then
-            pip3 install --user textual
+        echo "Textual package not found. This is needed for TUI mode (deprecated)."
+
+        # Check if this is Arch Linux
+        if command -v pacman &> /dev/null; then
+            echo "Detected Arch Linux system."
+            echo "Textual is available in the AUR. You can install it later with:"
+            echo "yay -S python-textual"
         else
-            echo -e "${YELLOW}Cannot install Textual. Please install it manually: pip3 install --user textual${NC}"
+            # Not Arch Linux, try pip
+            if command -v pip3 &> /dev/null; then
+                read -p "Do you want to install Textual now using pip? (y/N): " install_textual
+            if [[ "$install_textual" == "y" || "$install_textual" == "Y" ]]; then
+                echo "Installing Textual package..."
+                pip3 install --user textual
+            else
+                echo -e "${YELLOW}Note: TUI mode will not be available without Textual.${NC}"
+                echo "You can install it later with: pip3 install --user textual"
+            fi
+        else
+            echo -e "${YELLOW}Note: TUI mode will not be available without Textual.${NC}"
+                echo "Please install Textual manually using your package manager."
+            fi
         fi
     fi
 }
@@ -69,6 +113,7 @@ create_directories() {
     mkdir -p "$CONFIG_DIR"
     mkdir -p "$SCRIPT_DIR"
     mkdir -p "$SCRIPT_DIR/logs"
+    mkdir -p "$DESKTOP_DIR"
 }
 
 # Try to fetch from GitHub, if fails use local files
@@ -84,11 +129,20 @@ install_files() {
             ONLINE_INSTALL=true
             echo "Using online installation from GitHub..."
 
-            # Download Python files
+            # Download core Python files
             curl -sSL "$REPO_URL/kayland.py" -o "$SCRIPT_DIR/kayland.py"
             curl -sSL "$REPO_URL/window_manager.py" -o "$SCRIPT_DIR/window_manager.py"
             curl -sSL "$REPO_URL/app_manager.py" -o "$SCRIPT_DIR/app_manager.py"
+
+            # Download TUI files (deprecated but kept for compatibility)
             curl -sSL "$REPO_URL/tui.py" -o "$SCRIPT_DIR/tui.py"
+
+            # Download GUI files
+            curl -sSL "$REPO_URL/gui.py" -o "$SCRIPT_DIR/gui.py"
+            curl -sSL "$REPO_URL/gui_app.py" -o "$SCRIPT_DIR/gui_app.py"
+            curl -sSL "$REPO_URL/gui_dialogs.py" -o "$SCRIPT_DIR/gui_dialogs.py"
+            curl -sSL "$REPO_URL/gui_widgets.py" -o "$SCRIPT_DIR/gui_widgets.py"
+            curl -sSL "$REPO_URL/gui_utils.py" -o "$SCRIPT_DIR/gui_utils.py"
         fi
     fi
 
@@ -96,22 +150,39 @@ install_files() {
     if [ "$ONLINE_INSTALL" = false ]; then
         echo "Using local installation..."
 
+        # Check for core files
         if [ -f "$CURRENT_DIR/kayland.py" ] && \
            [ -f "$CURRENT_DIR/window_manager.py" ] && \
-           [ -f "$CURRENT_DIR/app_manager.py" ] && \
-           [ -f "$CURRENT_DIR/tui.py" ]; then
+           [ -f "$CURRENT_DIR/app_manager.py" ]; then
 
+            # Copy core files
             cp "$CURRENT_DIR/kayland.py" "$SCRIPT_DIR/kayland.py"
             cp "$CURRENT_DIR/window_manager.py" "$SCRIPT_DIR/window_manager.py"
             cp "$CURRENT_DIR/app_manager.py" "$SCRIPT_DIR/app_manager.py"
-            cp "$CURRENT_DIR/tui.py" "$SCRIPT_DIR/tui.py"
+
+            # Copy TUI files if available
+            if [ -f "$CURRENT_DIR/tui.py" ]; then
+                cp "$CURRENT_DIR/tui.py" "$SCRIPT_DIR/tui.py"
+            fi
+
+            # Copy GUI files if available
+            if [ -f "$CURRENT_DIR/gui.py" ]; then
+                cp "$CURRENT_DIR/gui.py" "$SCRIPT_DIR/gui.py"
+                cp "$CURRENT_DIR/gui_app.py" "$SCRIPT_DIR/gui_app.py" 2>/dev/null || true
+                cp "$CURRENT_DIR/gui_dialogs.py" "$SCRIPT_DIR/gui_dialogs.py" 2>/dev/null || true
+                cp "$CURRENT_DIR/gui_widgets.py" "$SCRIPT_DIR/gui_widgets.py" 2>/dev/null || true
+                cp "$CURRENT_DIR/gui_utils.py" "$SCRIPT_DIR/gui_utils.py" 2>/dev/null || true
+            else
+                echo -e "${YELLOW}Warning: GUI files not found in current directory.${NC}"
+                echo "The GUI mode will not be available."
+            fi
         else
             echo -e "${RED}Error: Cannot find required files for installation.${NC}"
             echo "Please ensure the following files are in the current directory:"
             echo "  - kayland.py"
             echo "  - window_manager.py"
             echo "  - app_manager.py"
-            echo "  - tui.py"
+            echo "  - gui.py (for GUI mode)"
             exit 1
         fi
     fi
@@ -129,7 +200,33 @@ EOF
     # Make launcher executable
     chmod +x "$INSTALL_DIR/kayland"
 
+    # Create desktop file
+    install_desktop_file
+
     echo -e "${GREEN}Kayland installation completed.${NC}"
+}
+
+# Create and install desktop file
+install_desktop_file() {
+    echo "Creating desktop file..."
+    cat > "$DESKTOP_DIR/kayland.desktop" << EOF
+[Desktop Entry]
+Name=Kayland
+Comment=KDE Wayland Window Manager
+Exec=kayland gui
+Icon=preferences-system-windows
+Terminal=false
+Type=Application
+Categories=Utility;System;
+Keywords=window;manager;kde;wayland;
+EOF
+
+    # Update desktop database
+    if command -v update-desktop-database &> /dev/null; then
+        update-desktop-database "$DESKTOP_DIR" &> /dev/null || true
+    fi
+
+    echo "Desktop file installed at $DESKTOP_DIR/kayland.desktop"
 }
 
 # Create initial configuration if it doesn't exist
@@ -235,6 +332,7 @@ clean_install() {
     echo "Cleaning previous installation..."
     rm -rf "$SCRIPT_DIR"
     rm -f "$INSTALL_DIR/kayland"
+    rm -f "$DESKTOP_DIR/kayland.desktop"
 
     # Optionally remove config
     if [ "$1" = "--purge" ]; then
@@ -252,6 +350,12 @@ uninstall() {
 
     # Remove executable
     rm -f "$INSTALL_DIR/kayland"
+
+    # Remove desktop file
+    rm -f "$DESKTOP_DIR/kayland.desktop"
+    if command -v update-desktop-database &> /dev/null; then
+        update-desktop-database "$DESKTOP_DIR" &> /dev/null || true
+    fi
 
     # Ask if user wants to keep configuration
     read -p "Do you want to keep your configuration? (y/N): " keep_config
@@ -285,6 +389,7 @@ show_help() {
     echo "  --no-service    Do not install the systemd service"
     echo "  --service-only  Only install/update the systemd service"
     echo "  --service-status Check the status of the Kayland service"
+    echo "  --gui-only      Only install GUI files and dependencies"
     echo ""
 }
 
@@ -296,6 +401,7 @@ main() {
     INSTALL_SERVICE=false
     SKIP_SERVICE=false
     SERVICE_ONLY=false
+    GUI_ONLY=false
     INSTALL_MODE="install"
 
     # Parse arguments
@@ -333,6 +439,9 @@ main() {
                 service_status
                 exit $?
                 ;;
+            --gui-only)
+                GUI_ONLY=true
+                ;;
             *)
                 echo -e "${RED}Unknown option: $1${NC}"
                 show_help
@@ -358,7 +467,7 @@ main() {
     # Install service if requested
     if [ "$INSTALL_SERVICE" = true ]; then
         install_service
-    elif [ "$SKIP_SERVICE" = false ]; then
+    elif [ "$SKIP_SERVICE" = false ] && [ "$GUI_ONLY" = false ]; then
         # Ask if user wants to install the service
         read -p "Do you want to install Kayland as a systemd service? (y/N): " install_svc
         if [[ "$install_svc" == "y" || "$install_svc" == "Y" ]]; then
@@ -374,7 +483,19 @@ main() {
         echo -e "${GREEN}Kayland has been installed successfully!${NC}"
     fi
 
-    echo "Run 'kayland' to start the TUI or 'kayland --help' for command-line options."
+    # Check if PySide6 is installed for GUI mode
+    if python3 -c "import PySide6" &> /dev/null; then
+        echo "Run 'kayland gui' to start the GUI or 'kayland --help' for command-line options."
+    else
+        if command -v pacman &> /dev/null; then
+            echo -e "${YELLOW}Note: The GUI mode requires the PySide6 package which is not installed.${NC}"
+            echo "You can install it with: sudo pacman -S python-pyside6"
+        else
+            echo -e "${YELLOW}Note: The GUI mode requires the PySide6 package which is not installed.${NC}"
+        echo "You can install it with: pip install --user pyside6"
+        fi
+        echo "For now, you can use 'kayland --help' for command-line options."
+    fi
 }
 
 main "$@"

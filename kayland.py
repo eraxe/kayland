@@ -49,6 +49,14 @@ except ImportError:
     has_textual = False
     logger.warning("Textual package not found. TUI mode will not be available.")
 
+# Try to import PySide6, needed for GUI
+has_pyside6 = True
+try:
+    import PySide6
+except ImportError:
+    has_pyside6 = False
+    logger.warning("PySide6 package not found. GUI mode will not be available.")
+
 
 def check_environment() -> bool:
     """Check if running on KDE Wayland with kdotool available"""
@@ -247,8 +255,37 @@ def register_shortcuts(app_manager, window_manager):
                 logger.error(f"Failed to register shortcut {shortcut['key']}: {str(e)}")
 
 
+def run_gui():
+    """Run the Kayland GUI"""
+    if not has_pyside6:
+        print("Error: The PySide6 package is required for GUI mode.")
+        print("Please install it with: pip install --user pyside6")
+        print("For Arch Linux users: 'sudo pacman -S python-pyside6' or 'yay -S python-pyside6'")
+        sys.exit(1)
+
+    try:
+        # Check environment first - this is important
+        if not check_environment():
+            print("Error: kdotool is required for window management. See log for details.")
+            sys.exit(1)
+
+        # Import the GUI module
+        from gui import run_gui
+        return run_gui()
+    except ImportError as e:
+        logger.error(f"Failed to import GUI module: {str(e)}")
+        print(f"Error: Failed to import GUI module: {str(e)}")
+        sys.exit(1)
+    except Exception as e:
+        logger.error(f"Error running GUI: {str(e)}")
+        print(f"Error running GUI: {str(e)}")
+        sys.exit(1)
+
+
+# Commented out TUI function
+"""
 def run_tui():
-    """Run the Kayland TUI"""
+    #Run the Kayland TUI
     if not has_textual:
         print("Error: The Textual package is required for TUI mode.")
         print("Please install it with: pip install --user textual")
@@ -271,6 +308,7 @@ def run_tui():
         logger.error(f"Error running TUI: {str(e)}")
         print(f"Error running TUI: {str(e)}")
         sys.exit(1)
+"""
 
 
 def main():
@@ -278,8 +316,11 @@ def main():
     parser = argparse.ArgumentParser(description="Kayland - KDE Wayland Window Manager")
     subparsers = parser.add_subparsers(dest="command", help="Command to run")
 
-    # TUI command (default)
-    tui_parser = subparsers.add_parser("tui", help="Launch the Terminal UI")
+    # GUI command (default)
+    gui_parser = subparsers.add_parser("gui", help="Launch the GUI")
+
+    # TUI command (still available but commented out in implementation)
+    tui_parser = subparsers.add_parser("tui", help="Launch the Terminal UI (Deprecated)")
 
     # Launch command
     launch_parser = subparsers.add_parser("launch", help="Launch or toggle an application")
@@ -483,10 +524,17 @@ def main():
                 print(f"Error searching for windows: {str(e)}")
             return 0
 
-    # If no command is provided or command is 'tui', launch the TUI
-    if args.command is None or args.command == "tui":
-        # Launch TUI
-        return run_tui() or 0
+    # If no command is provided or command is 'gui', launch the GUI (now the default)
+    if args.command is None or args.command == "gui":
+        # Launch GUI
+        return run_gui() or 0
+
+    # If command is 'tui', inform user of deprecation
+    if args.command == "tui":
+        print("Note: The TUI interface is deprecated in favor of the new GUI.")
+        print("You can still use it by uncommenting the TUI code in kayland.py")
+        print("For now, launching the GUI instead...")
+        return run_gui() or 0
 
     # For other commands that involve window management, check environment
     if not check_environment():
