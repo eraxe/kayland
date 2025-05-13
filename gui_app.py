@@ -17,12 +17,13 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
-from gui_widgets import AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget, StatusBarWithProgress, TitleBarWidget
+from gui_widgets import AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget, StatusBarWithProgress, \
+    TitleBarWidget
 from gui_dialogs import (
     ConfirmDialog, AppFormDialog, DesktopFileDialog, ShortcutDialog,
     SettingsDialog, AboutDialog
 )
-from gui_utils import apply_synthwave_theme
+from gui_utils import apply_synthwave_theme, SYNTHWAVE_COLORS
 
 logger = logging.getLogger("kayland.gui.app")
 
@@ -56,12 +57,39 @@ class KaylandGUI(QMainWindow):
         # Set window properties
         self.resize(1035, 748)  # 15% larger than original 900x650
 
+    def get_asset_path(self, file_name):
+        """Get the correct path to an asset file considering various installation scenarios"""
+        # Try multiple possible locations
+        potential_paths = [
+            # Check for assets in the same directory as the script
+            os.path.join(os.path.dirname(__file__), file_name),
+            # Check for assets in the parent directory
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), file_name),
+            # Check for assets in a dedicated assets directory
+            os.path.join(os.path.dirname(__file__), "assets", file_name),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", file_name),
+            # Check for system-wide installation
+            os.path.expanduser(f"~/.local/share/kayland/assets/{file_name}"),
+            # More general install locations
+            f"/usr/share/kayland/assets/{file_name}",
+            f"/usr/local/share/kayland/assets/{file_name}"
+        ]
+
+        for path in potential_paths:
+            if os.path.exists(path):
+                return path
+
+        # If no file is found, log a warning but return the first path anyway
+        logger.warning(f"Asset file not found: {file_name}")
+        return potential_paths[0]
+
     def setup_ui(self):
         """Set up the main window UI"""
         # Create central widget
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
+        main_layout.setSpacing(0)  # Remove spacing between elements
 
         # Create custom title bar
         self.title_bar = TitleBarWidget("Kayland - KDE Wayland Window Manager", self)
@@ -73,9 +101,15 @@ class KaylandGUI(QMainWindow):
         # Add title bar to layout
         main_layout.addWidget(self.title_bar)
 
+        # Set window icon
+        icon_path = self.get_asset_path("kayland.png")
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+
         # Create content widget
         content_widget = QWidget()
         content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(10, 10, 10, 10)
 
         # Create tab widget
         tabs = QTabWidget()
@@ -101,6 +135,8 @@ class KaylandGUI(QMainWindow):
         # Add button
         add_button = QPushButton("+")
         add_button.setMaximumWidth(30)
+        add_button.setText("+")  # Explicitly set the text to "+"
+        add_button.setToolTip("Add Application")  # Add tooltip
         add_button.clicked.connect(self.show_add_menu)
         app_header_layout.addWidget(add_button)
 
@@ -340,6 +376,15 @@ class KaylandGUI(QMainWindow):
         """Create the application menus"""
         # Main menu bar
         menu_bar = self.menuBar()
+        menu_bar.setStyleSheet(f"""
+            QMenuBar {{
+                background-color: {SYNTHWAVE_COLORS["dark_bg"]};
+                color: {SYNTHWAVE_COLORS["accent2"]};
+                font-size: 12pt;
+                min-height: 28px;
+                padding-top: 40px; /* Allow space for title bar above */
+            }}
+        """)
 
         # File menu
         file_menu = menu_bar.addMenu("File")

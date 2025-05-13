@@ -18,22 +18,67 @@ from PySide6.QtWidgets import (
     QTableWidget, QTableWidgetItem, QHeaderView, QMenu
 )
 
-from gui_utils import parse_desktop_file, find_desktop_files
-from gui_widgets import LogWidget
+from gui_widgets import TitleBarWidget, LogWidget
+from gui_utils import parse_desktop_file, find_desktop_files, SYNTHWAVE_COLORS
 
 logger = logging.getLogger("kayland.gui.dialogs")
 
 
-class ConfirmDialog(QDialog):
+class BaseFramelessDialog(QDialog):
+    """Base class for frameless dialogs with custom title bar"""
+
+    def __init__(self, parent=None, title="Dialog"):
+        super().__init__(parent, Qt.FramelessWindowHint)
+        self.dragPos = None
+
+        # Main layout
+        self.main_layout = QVBoxLayout(self)
+        self.main_layout.setContentsMargins(0, 0, 0, 0)
+        self.main_layout.setSpacing(0)
+
+        # Add title bar
+        self.title_bar = TitleBarWidget(title, self)
+        self.title_bar.closeClicked.connect(self.reject)
+        self.title_bar.minimizeClicked.connect(self.showMinimized)
+        self.title_bar.maximizeClicked.connect(self.toggle_maximize)
+        self.title_bar.pinClicked.connect(self.toggle_pin_on_top)
+        self.main_layout.addWidget(self.title_bar)
+
+        # Content widget
+        self.content_widget = QWidget()
+        self.content_layout = QVBoxLayout(self.content_widget)
+        self.main_layout.addWidget(self.content_widget)
+
+    def toggle_maximize(self):
+        """Toggle between maximized and normal window state"""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def toggle_pin_on_top(self):
+        """Toggle whether the window stays on top"""
+        flags = self.windowFlags()
+        if flags & Qt.WindowStaysOnTopHint:
+            self.setWindowFlags(flags & ~Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(flags | Qt.WindowStaysOnTopHint)
+        self.show()  # Need to call show() to apply the changed flags
+
+    def get_content_layout(self):
+        """Get the content layout for adding widgets"""
+        return self.content_layout
+
+
+class ConfirmDialog(BaseFramelessDialog):
     """Simple confirmation dialog"""
 
     def __init__(self, title: str, message: str, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle(title)
-        self.setMinimumWidth(400)
+        super().__init__(parent, title)
 
-        # Create layout
-        layout = QVBoxLayout(self)
+        # Get the content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # Add message
         message_label = QLabel(message)
@@ -46,12 +91,16 @@ class ConfirmDialog(QDialog):
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
 
+        self.setMinimumWidth(400)
 
-class AppFormDialog(QDialog):
+
+class AppFormDialog(BaseFramelessDialog):
     """Dialog for adding or editing an application"""
 
     def __init__(self, app_manager, app_id=None, desktop_file=None, parent=None):
-        super().__init__(parent)
+        title = "Edit Application" if app_id else "Add Application"
+        super().__init__(parent, title)
+
         self.app_manager = app_manager
         self.app_id = app_id
         self.desktop_file = desktop_file
@@ -60,9 +109,6 @@ class AppFormDialog(QDialog):
 
         if app_id:
             self.app_data = app_manager.get_app_by_id(app_id)
-            self.setWindowTitle("Edit Application")
-        else:
-            self.setWindowTitle("Add Application")
 
         self.setup_ui()
 
@@ -70,8 +116,11 @@ class AppFormDialog(QDialog):
         """Set up the dialog UI"""
         is_edit = self.app_data is not None
 
-        # Create layouts
-        layout = QVBoxLayout(self)
+        # Get the content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Create form layout
         form_layout = QFormLayout()
 
         # Application name
@@ -162,14 +211,40 @@ class AppFormDialog(QDialog):
         # Delete button (edit mode only)
         if is_edit:
             delete_button = QPushButton("Delete")
-            delete_button.setStyleSheet("background-color: #ff4444; color: white;")
+            delete_button.setStyleSheet(f"background-color: #ff4444; color: {SYNTHWAVE_COLORS['active_text']};")
             delete_button.clicked.connect(self.delete_app)
             button_layout.addWidget(delete_button)
 
         layout.addLayout(button_layout)
 
         # Set dialog size
-        self.resize(500, 350)
+        self.resize(500, 400)
+
+    def get_asset_path(self, file_name):
+        """Get the correct path to an asset file considering various installation scenarios"""
+        # Try multiple possible locations
+        potential_paths = [
+            # Check for assets in the same directory as the script
+            os.path.join(os.path.dirname(__file__), file_name),
+            # Check for assets in the parent directory
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), file_name),
+            # Check for assets in a dedicated assets directory
+            os.path.join(os.path.dirname(__file__), "assets", file_name),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", file_name),
+            # Check for system-wide installation
+            os.path.expanduser(f"~/.local/share/kayland/assets/{file_name}"),
+            # More general install locations
+            f"/usr/share/kayland/assets/{file_name}",
+            f"/usr/local/share/kayland/assets/{file_name}"
+        ]
+
+        for path in potential_paths:
+            if os.path.exists(path):
+                return path
+
+        # If no file is found, log a warning but return the first path anyway
+        logger.warning(f"Asset file not found: {file_name}")
+        return potential_paths[0]
 
     def browse_desktop_file(self):
         """Open file dialog to browse for desktop files"""
@@ -402,12 +477,11 @@ class AppFormDialog(QDialog):
                 logger.error(f"Error deleting app: {str(e)}")
 
 
-class DesktopFileDialog(QDialog):
+class DesktopFileDialog(BaseFramelessDialog):
     """Dialog for selecting a desktop file"""
 
     def __init__(self, parent=None, desktop_dir=None):
-        super().__init__(parent)
-        self.setWindowTitle("Select Desktop File")
+        super().__init__(parent, "Select Desktop File")
         self.desktop_dir = desktop_dir or os.path.expanduser("~/.local/share/applications")
         self.selected_file = None
         self.selected_data = None
@@ -417,7 +491,9 @@ class DesktopFileDialog(QDialog):
 
     def setup_ui(self):
         """Set up the dialog UI"""
-        layout = QVBoxLayout(self)
+        # Get content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # Create a splitter for the file list and preview
         splitter = QSplitter(Qt.Horizontal)
@@ -558,11 +634,13 @@ class DesktopFileDialog(QDialog):
             QMessageBox.warning(self, "Selection Required", "Please select a desktop file")
 
 
-class ShortcutDialog(QDialog):
+class ShortcutDialog(BaseFramelessDialog):
     """Dialog for adding or editing shortcuts"""
 
     def __init__(self, app_manager, shortcut_id=None, parent=None):
-        super().__init__(parent)
+        title = "Edit Shortcut" if shortcut_id else "Add Shortcut"
+        super().__init__(parent, title)
+
         self.app_manager = app_manager
         self.shortcut_id = shortcut_id
         self.shortcut_data = None
@@ -570,10 +648,7 @@ class ShortcutDialog(QDialog):
 
         # Load shortcut data if editing
         if shortcut_id:
-            self.setWindowTitle("Edit Shortcut")
             self.shortcut_data = app_manager.get_shortcut_by_id(shortcut_id)
-        else:
-            self.setWindowTitle("Add Shortcut")
 
         # Pre-load all apps
         self.all_apps = app_manager.get_all_apps()
@@ -582,7 +657,11 @@ class ShortcutDialog(QDialog):
 
     def setup_ui(self):
         """Set up the dialog UI"""
-        layout = QVBoxLayout(self)
+        # Get content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Create form layout
         form_layout = QFormLayout()
 
         # Application selector
@@ -635,14 +714,14 @@ class ShortcutDialog(QDialog):
 
         if self.shortcut_id:
             delete_button = QPushButton("Delete")
-            delete_button.setStyleSheet("background-color: #ff4444; color: white;")
+            delete_button.setStyleSheet(f"background-color: #ff4444; color: {SYNTHWAVE_COLORS['active_text']};")
             delete_button.clicked.connect(self.delete_shortcut)
             button_layout.addWidget(delete_button)
 
         layout.addLayout(button_layout)
 
         # Set dialog size
-        self.resize(400, 200)
+        self.resize(400, 250)
 
     def save_shortcut(self):
         """Save the shortcut"""
@@ -728,19 +807,21 @@ class ShortcutDialog(QDialog):
                 logger.error(f"Error deleting shortcut: {str(e)}")
 
 
-class SettingsDialog(QDialog):
+class SettingsDialog(BaseFramelessDialog):
     """Dialog for application settings"""
 
     def __init__(self, settings, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("Kayland Settings")
+        super().__init__(parent, "Kayland Settings")
         self.settings = settings
-
         self.setup_ui()
 
     def setup_ui(self):
         """Set up the dialog UI"""
-        layout = QVBoxLayout(self)
+        # Get content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
+
+        # Create form layout
         form_layout = QFormLayout()
 
         # Desktop file directory
@@ -777,7 +858,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(button_layout)
 
         # Set dialog size
-        self.resize(500, 200)
+        self.resize(500, 250)
 
     def browse_desktop_dir(self):
         """Open dialog to select desktop file directory"""
@@ -816,23 +897,23 @@ class SettingsDialog(QDialog):
             logger.error(f"Error saving settings: {str(e)}")
 
 
-class AboutDialog(QDialog):
+class AboutDialog(BaseFramelessDialog):
     """Dialog showing information about the application"""
 
     def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("About Kayland")
-
+        super().__init__(parent, "About Kayland")
         self.setup_ui()
 
     def setup_ui(self):
         """Set up the dialog UI"""
-        layout = QVBoxLayout(self)
+        # Get content layout
+        layout = self.get_content_layout()
+        layout.setContentsMargins(20, 20, 20, 20)
 
         # Title
         title_label = QLabel("Kayland - KDE Wayland Window Manager")
         title_label.setAlignment(Qt.AlignCenter)
-        title_label.setStyleSheet("font-size: 18px; font-weight: bold; color: #f615f6;")
+        title_label.setStyleSheet(f"font-size: 18px; font-weight: bold; color: {SYNTHWAVE_COLORS['hover_purple']};")
         layout.addWidget(title_label)
 
         # Description

@@ -24,12 +24,14 @@ DEFAULT_SETTINGS = {
 SYNTHWAVE_COLORS = {
     "background": "#2b213a",
     "foreground": "#ffffff",
-    "accent": "#00fff5",  # Changed from purple to cyan
-    "accent2": "#00fff5",  # Also cyan
+    "accent": "#00fff5",  # Cyan
+    "accent2": "#00fff5",  # Cyan
     "accent3": "#00ccff",  # More cyan
     "accent4": "#00ccff",  # More cyan
     "dark_bg": "#150a2d",
     "mid_bg": "#3b1f5f",
+    "hover_purple": "#e464ff",  # Lighter synthwave purple for hover states
+    "active_text": "#150a2d",   # Dark text for active tabs and button hover
 }
 
 
@@ -70,6 +72,9 @@ def apply_synthwave_theme(app):
     stylesheet = f"""
     QMainWindow, QDialog {{
         background-color: {SYNTHWAVE_COLORS["background"]};
+        margin: 0;
+        padding: 0;
+        border: none;
     }}
 
     QMenuBar {{
@@ -86,7 +91,8 @@ def apply_synthwave_theme(app):
     }}
 
     QMenuBar::item:selected {{
-        background-color: {SYNTHWAVE_COLORS["mid_bg"]};
+        background-color: {SYNTHWAVE_COLORS["hover_purple"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QMenu {{
@@ -101,7 +107,8 @@ def apply_synthwave_theme(app):
     }}
 
     QMenu::item:selected {{
-        background-color: {SYNTHWAVE_COLORS["mid_bg"]};
+        background-color: {SYNTHWAVE_COLORS["hover_purple"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QTabWidget::pane {{
@@ -122,11 +129,12 @@ def apply_synthwave_theme(app):
 
     QTabBar::tab:selected {{
         background-color: {SYNTHWAVE_COLORS["accent"]};
-        color: {SYNTHWAVE_COLORS["foreground"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QTabBar::tab:hover {{
-        background-color: {SYNTHWAVE_COLORS["mid_bg"]};
+        background-color: {SYNTHWAVE_COLORS["hover_purple"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QLineEdit, QTextEdit, QPlainTextEdit, QComboBox, QSpinBox {{
@@ -154,13 +162,13 @@ def apply_synthwave_theme(app):
     }}
 
     QPushButton:hover {{
-        background-color: {SYNTHWAVE_COLORS["accent"]};
-        color: {SYNTHWAVE_COLORS["foreground"]};
+        background-color: {SYNTHWAVE_COLORS["hover_purple"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QPushButton:pressed {{
         background-color: {SYNTHWAVE_COLORS["accent"]};
-        color: {SYNTHWAVE_COLORS["foreground"]};
+        color: {SYNTHWAVE_COLORS["active_text"]};
     }}
 
     QListView, QTreeView, QTableView {{

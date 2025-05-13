@@ -32,7 +32,7 @@ try:
     # Import core PySide6 modules, including QAction from the right place
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QCoreApplication, Qt
-    from PySide6.QtGui import QAction  # QAction is in QtGui, not QtWidgets
+    from PySide6.QtGui import QAction, QIcon  # QAction is in QtGui, not QtWidgets
 except ImportError as e:
     logger.error(f"Failed to import PySide6: {str(e)}")
     print("Error: The PySide6 package is required for GUI mode.")
@@ -74,6 +74,33 @@ except ImportError as e:
     logger.error(f"Failed to import required modules: {str(e)}")
     print(f"Error: Failed to import required modules: {str(e)}")
     sys.exit(1)
+
+
+def get_asset_path(file_name):
+    """Get the correct path to an asset file considering various installation scenarios"""
+    # Try multiple possible locations
+    potential_paths = [
+        # Check for assets in the same directory as the script
+        os.path.join(os.path.dirname(__file__), file_name),
+        # Check for assets in the parent directory
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), file_name),
+        # Check for assets in a dedicated assets directory
+        os.path.join(os.path.dirname(__file__), "assets", file_name),
+        os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", file_name),
+        # Check for system-wide installation
+        os.path.expanduser(f"~/.local/share/kayland/assets/{file_name}"),
+        # More general install locations
+        f"/usr/share/kayland/assets/{file_name}",
+        f"/usr/local/share/kayland/assets/{file_name}"
+    ]
+
+    for path in potential_paths:
+        if os.path.exists(path):
+            return path
+
+    # If no file is found, log a warning but return the first path anyway
+    logger.warning(f"Asset file not found: {file_name}")
+    return potential_paths[0]
 
 
 def check_environment():
@@ -119,8 +146,10 @@ def run_gui():
         QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         app = QApplication(sys.argv)
 
-        # Set stylesheet for a modern look - we'll use a dark theme similar to the TUI
-        app.setStyle("Fusion")
+        # Set app icon
+        icon_path = get_asset_path("kayland.png")
+        if os.path.exists(icon_path):
+            app.setWindowIcon(QIcon(icon_path))
 
         # Create and show the GUI
         main_window = KaylandGUI(window_manager, app_manager, settings)

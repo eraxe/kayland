@@ -8,6 +8,7 @@ INSTALL_DIR="$HOME/.local/bin"
 CONFIG_DIR="$HOME/.config/kayland"
 SCRIPT_DIR="$HOME/.local/share/kayland"
 DESKTOP_DIR="$HOME/.local/share/applications"
+ASSETS_DIR="$HOME/.local/share/kayland/assets"
 CURRENT_DIR="$(pwd)"
 
 # Colors for output
@@ -114,6 +115,7 @@ create_directories() {
     mkdir -p "$SCRIPT_DIR"
     mkdir -p "$SCRIPT_DIR/logs"
     mkdir -p "$DESKTOP_DIR"
+    mkdir -p "$ASSETS_DIR"
 }
 
 # Try to fetch from GitHub, if fails use local files
@@ -143,6 +145,15 @@ install_files() {
             curl -sSL "$REPO_URL/gui_dialogs.py" -o "$SCRIPT_DIR/gui_dialogs.py"
             curl -sSL "$REPO_URL/gui_widgets.py" -o "$SCRIPT_DIR/gui_widgets.py"
             curl -sSL "$REPO_URL/gui_utils.py" -o "$SCRIPT_DIR/gui_utils.py"
+
+            # Download asset files
+            curl -sSL "$REPO_URL/assets/close.svg" -o "$ASSETS_DIR/close.svg"
+            curl -sSL "$REPO_URL/assets/minimize.svg" -o "$ASSETS_DIR/minimize.svg"
+            curl -sSL "$REPO_URL/assets/maximize.svg" -o "$ASSETS_DIR/maximize.svg"
+            curl -sSL "$REPO_URL/assets/pin.svg" -o "$ASSETS_DIR/pin.svg"
+            curl -sSL "$REPO_URL/assets/unpin.svg" -o "$ASSETS_DIR/unpin.svg"
+            curl -sSL "$REPO_URL/assets/kayland.svg" -o "$ASSETS_DIR/kayland.svg"
+            curl -sSL "$REPO_URL/assets/kayland.png" -o "$ASSETS_DIR/kayland.png"
         fi
     fi
 
@@ -175,6 +186,16 @@ install_files() {
             else
                 echo -e "${YELLOW}Warning: GUI files not found in current directory.${NC}"
                 echo "The GUI mode will not be available."
+            fi
+
+            # Copy asset files if available
+            if [ -d "$CURRENT_DIR/assets" ]; then
+                # Assets directory exists, copy all assets
+                for asset in "$CURRENT_DIR/assets/"*; do
+                    if [ -f "$asset" ]; then
+                        cp "$asset" "$ASSETS_DIR/" 2>/dev/null || true
+                    fi
+                done
             fi
         else
             echo -e "${RED}Error: Cannot find required files for installation.${NC}"
@@ -214,7 +235,7 @@ install_desktop_file() {
 Name=Kayland
 Comment=KDE Wayland Window Manager
 Exec=kayland gui
-Icon=preferences-system-windows
+Icon=$ASSETS_DIR/kayland.png
 Terminal=false
 Type=Application
 Categories=Utility;System;

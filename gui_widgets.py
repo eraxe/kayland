@@ -83,45 +83,94 @@ class TitleBarWidget(QWidget):
         # Set fixed height for title bar (scaled up by 15%)
         self.setFixedHeight(40)
 
+    def get_asset_path(self, file_name):
+        """Get the correct path to an asset file considering various installation scenarios"""
+        # Try multiple possible locations
+        potential_paths = [
+            # Check for assets in the same directory as the script
+            os.path.join(os.path.dirname(__file__), file_name),
+            # Check for assets in the parent directory
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), file_name),
+            # Check for assets in a dedicated assets directory
+            os.path.join(os.path.dirname(__file__), "assets", file_name),
+            os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets", file_name),
+            # Check for system-wide installation
+            os.path.expanduser(f"~/.local/share/kayland/assets/{file_name}"),
+            # More general install locations
+            f"/usr/share/kayland/assets/{file_name}",
+            f"/usr/local/share/kayland/assets/{file_name}"
+        ]
+
+        for path in potential_paths:
+            if os.path.exists(path):
+                return path
+
+        # If no file is found, log a warning but return the first path anyway
+        logger.warning(f"Asset file not found: {file_name}")
+        return potential_paths[0]
+
     def update_style(self):
         """Update the styling of the title bar"""
         dark_bg = SYNTHWAVE_COLORS["dark_bg"]
         accent = SYNTHWAVE_COLORS["accent"]
+        hover_purple = SYNTHWAVE_COLORS["hover_purple"]
+        active_text = SYNTHWAVE_COLORS["active_text"]
 
         self.setStyleSheet(f"""
             TitleBarWidget {{
                 background-color: {dark_bg};
                 border-bottom: 1px solid {accent};
             }}
-            
+
             QPushButton {{
                 background-color: transparent;
                 border: none;
                 font-size: 16px;
             }}
-            
+
             QPushButton:hover {{
-                background-color: rgba(255, 255, 255, 0.2);
+                background-color: {hover_purple};
+                color: {active_text};
                 border-radius: 15px;
             }}
         """)
 
         # Try to load icons from assets, fall back to text if not available
         try:
-            asset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+            # Close button
+            close_icon_path = self.get_asset_path("close.svg")
+            if os.path.exists(close_icon_path):
+                self.close_btn.setIcon(QIcon(close_icon_path))
+                self.close_btn.setIconSize(QSize(16, 16))
+            else:
+                self.close_btn.setText("✕")
 
-            self.close_btn.setIcon(QIcon(os.path.join(asset_path, "close.svg")))
-            self.minimize_btn.setIcon(QIcon(os.path.join(asset_path, "minimize.svg")))
-            self.maximize_btn.setIcon(QIcon(os.path.join(asset_path, "maximize.svg")))
-            self.pin_btn.setIcon(QIcon(os.path.join(asset_path, "pin.svg") if self.is_pinned else
-                                    os.path.join(asset_path, "unpin.svg")))
+            # Minimize button
+            minimize_icon_path = self.get_asset_path("minimize.svg")
+            if os.path.exists(minimize_icon_path):
+                self.minimize_btn.setIcon(QIcon(minimize_icon_path))
+                self.minimize_btn.setIconSize(QSize(16, 16))
+            else:
+                self.minimize_btn.setText("_")
 
-            self.close_btn.setIconSize(QSize(16, 16))
-            self.minimize_btn.setIconSize(QSize(16, 16))
-            self.maximize_btn.setIconSize(QSize(16, 16))
-            self.pin_btn.setIconSize(QSize(16, 16))
-        except:
-            # Fallback to text if icons not available
+            # Maximize button
+            maximize_icon_path = self.get_asset_path("maximize.svg")
+            if os.path.exists(maximize_icon_path):
+                self.maximize_btn.setIcon(QIcon(maximize_icon_path))
+                self.maximize_btn.setIconSize(QSize(16, 16))
+            else:
+                self.maximize_btn.setText("□")
+
+            # Pin button
+            pin_icon_path = self.get_asset_path("pin.svg" if self.is_pinned else "unpin.svg")
+            if os.path.exists(pin_icon_path):
+                self.pin_btn.setIcon(QIcon(pin_icon_path))
+                self.pin_btn.setIconSize(QSize(16, 16))
+            else:
+                self.pin_btn.setText("📌" if self.is_pinned else "📍")
+        except Exception as e:
+            logger.error(f"Error loading title bar icons: {str(e)}")
+            # Fallback to text
             self.close_btn.setText("✕")
             self.minimize_btn.setText("_")
             self.maximize_btn.setText("□")
