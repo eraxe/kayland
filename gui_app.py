@@ -14,11 +14,10 @@ from PySide6.QtWidgets import (
     QMenu, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QFrame, QStackedWidget
 )
-# IMPORTANT: QAction belongs in QtGui, not QtWidgets
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 
-from gui_widgets import AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget, StatusBarWithProgress
+from gui_widgets import AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget, StatusBarWithProgress, TitleBarWidget
 from gui_dialogs import (
     ConfirmDialog, AppFormDialog, DesktopFileDialog, ShortcutDialog,
     SettingsDialog, AboutDialog
@@ -32,7 +31,7 @@ class KaylandGUI(QMainWindow):
     """Main window for Kayland GUI"""
 
     def __init__(self, window_manager, app_manager, settings):
-        super().__init__()
+        super().__init__(None, Qt.FramelessWindowHint)  # Set frameless window
 
         self.window_manager = window_manager
         self.app_manager = app_manager
@@ -55,14 +54,28 @@ class KaylandGUI(QMainWindow):
         self.add_log_entry("Kayland GUI started successfully", "info")
 
         # Set window properties
-        self.setWindowTitle("Kayland - KDE Wayland Window Manager")
-        self.resize(900, 650)
+        self.resize(1035, 748)  # 15% larger than original 900x650
 
     def setup_ui(self):
         """Set up the main window UI"""
         # Create central widget
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
+        main_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Create custom title bar
+        self.title_bar = TitleBarWidget("Kayland - KDE Wayland Window Manager", self)
+        self.title_bar.closeClicked.connect(self.close)
+        self.title_bar.minimizeClicked.connect(self.showMinimized)
+        self.title_bar.maximizeClicked.connect(self.toggle_maximize)
+        self.title_bar.pinClicked.connect(self.toggle_pin_on_top)
+
+        # Add title bar to layout
+        main_layout.addWidget(self.title_bar)
+
+        # Create content widget
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
 
         # Create tab widget
         tabs = QTabWidget()
@@ -228,7 +241,8 @@ class KaylandGUI(QMainWindow):
         tabs.addTab(service_tab, "Service")
         tabs.addTab(settings_tab, "Settings")
 
-        main_layout.addWidget(tabs)
+        content_layout.addWidget(tabs)
+        main_layout.addWidget(content_widget)
 
         # Set central widget
         self.setCentralWidget(central_widget)
@@ -243,6 +257,22 @@ class KaylandGUI(QMainWindow):
 
         # Store references to important widgets
         self.tabs = tabs
+
+    def toggle_maximize(self):
+        """Toggle between maximized and normal window state"""
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def toggle_pin_on_top(self):
+        """Toggle whether the window stays on top"""
+        flags = self.windowFlags()
+        if flags & Qt.WindowStaysOnTopHint:
+            self.setWindowFlags(flags & ~Qt.WindowStaysOnTopHint)
+        else:
+            self.setWindowFlags(flags | Qt.WindowStaysOnTopHint)
+        self.show()  # Need to call show() to apply the changed flags
 
     def create_actions(self):
         """Create the application actions"""

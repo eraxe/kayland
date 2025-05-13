@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 # gui_widgets.py - Custom widgets for Kayland GUI
 
+import os
 import logging
 from typing import Dict, List, Any, Optional, Callable
 
-from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
-# Fix: Import QAction from QtGui, not QtWidgets
+from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer, QPoint
 from PySide6.QtGui import QIcon, QColor, QStandardItemModel, QStandardItem, QAction
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
@@ -17,6 +17,146 @@ from PySide6.QtWidgets import (
 from gui_utils import SYNTHWAVE_COLORS
 
 logger = logging.getLogger("kayland.gui.widgets")
+
+
+class TitleBarWidget(QWidget):
+    """Custom title bar widget with window controls"""
+
+    closeClicked = Signal()
+    minimizeClicked = Signal()
+    maximizeClicked = Signal()
+    pinClicked = Signal()
+
+    def __init__(self, title="Kayland", parent=None):
+        super().__init__(parent)
+        self.parent = parent
+        self.title_text = title
+        self.is_pinned = False
+        self.dragPos = None
+
+        # Set up layout
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(10, 5, 10, 5)
+
+        # Window controls (left side)
+        btn_size = QSize(30, 30)
+
+        self.close_btn = QPushButton()
+        self.close_btn.setFixedSize(btn_size)
+        self.close_btn.setToolTip("Close")
+        self.close_btn.clicked.connect(self.closeClicked.emit)
+
+        self.minimize_btn = QPushButton()
+        self.minimize_btn.setFixedSize(btn_size)
+        self.minimize_btn.setToolTip("Minimize")
+        self.minimize_btn.clicked.connect(self.minimizeClicked.emit)
+
+        self.maximize_btn = QPushButton()
+        self.maximize_btn.setFixedSize(btn_size)
+        self.maximize_btn.setToolTip("Maximize")
+        self.maximize_btn.clicked.connect(self.maximizeClicked.emit)
+
+        # Title label (center)
+        self.title_label = QLabel(title)
+        self.title_label.setAlignment(Qt.AlignCenter)
+        self.title_label.setStyleSheet("font-weight: bold; font-size: 13pt; color: #00fff5;")
+
+        # Pin button (right side)
+        self.pin_btn = QPushButton()
+        self.pin_btn.setFixedSize(btn_size)
+        self.pin_btn.setToolTip("Pin on Top")
+        self.pin_btn.clicked.connect(self.toggle_pin)
+
+        # Add widgets to layout
+        layout.addWidget(self.close_btn)
+        layout.addWidget(self.minimize_btn)
+        layout.addWidget(self.maximize_btn)
+        layout.addStretch(1)
+        layout.addWidget(self.title_label)
+        layout.addStretch(1)
+        layout.addWidget(self.pin_btn)
+
+        # Set styling
+        self.setAutoFillBackground(True)
+        self.update_style()
+
+        # Set fixed height for title bar (scaled up by 15%)
+        self.setFixedHeight(40)
+
+    def update_style(self):
+        """Update the styling of the title bar"""
+        dark_bg = SYNTHWAVE_COLORS["dark_bg"]
+        accent = SYNTHWAVE_COLORS["accent"]
+
+        self.setStyleSheet(f"""
+            TitleBarWidget {{
+                background-color: {dark_bg};
+                border-bottom: 1px solid {accent};
+            }}
+            
+            QPushButton {{
+                background-color: transparent;
+                border: none;
+                font-size: 16px;
+            }}
+            
+            QPushButton:hover {{
+                background-color: rgba(255, 255, 255, 0.2);
+                border-radius: 15px;
+            }}
+        """)
+
+        # Try to load icons from assets, fall back to text if not available
+        try:
+            asset_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "assets")
+
+            self.close_btn.setIcon(QIcon(os.path.join(asset_path, "close.svg")))
+            self.minimize_btn.setIcon(QIcon(os.path.join(asset_path, "minimize.svg")))
+            self.maximize_btn.setIcon(QIcon(os.path.join(asset_path, "maximize.svg")))
+            self.pin_btn.setIcon(QIcon(os.path.join(asset_path, "pin.svg") if self.is_pinned else
+                                    os.path.join(asset_path, "unpin.svg")))
+
+            self.close_btn.setIconSize(QSize(16, 16))
+            self.minimize_btn.setIconSize(QSize(16, 16))
+            self.maximize_btn.setIconSize(QSize(16, 16))
+            self.pin_btn.setIconSize(QSize(16, 16))
+        except:
+            # Fallback to text if icons not available
+            self.close_btn.setText("✕")
+            self.minimize_btn.setText("_")
+            self.maximize_btn.setText("□")
+            self.pin_btn.setText("📌" if self.is_pinned else "📍")
+
+    def toggle_pin(self):
+        """Toggle the pin state"""
+        self.is_pinned = not self.is_pinned
+        self.update_style()
+        self.pinClicked.emit()
+
+    def mousePressEvent(self, event):
+        """Handle mouse press events for dragging the window"""
+        if event.button() == Qt.LeftButton:
+            self.dragPos = event.globalPosition().toPoint()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        """Handle mouse move events for dragging the window"""
+        if event.buttons() == Qt.LeftButton and self.dragPos is not None:
+            if self.parent:
+                self.parent.move(self.parent.pos() + event.globalPosition().toPoint() - self.dragPos)
+                self.dragPos = event.globalPosition().toPoint()
+                event.accept()
+
+    def mouseReleaseEvent(self, event):
+        """Handle mouse release events"""
+        self.dragPos = None
+        event.accept()
+
+    def mouseDoubleClickEvent(self, event):
+        """Handle double clicks to maximize/restore"""
+        if event.button() == Qt.LeftButton:
+            self.maximizeClicked.emit()
+            event.accept()
 
 
 class AppListItem(QListWidgetItem):
