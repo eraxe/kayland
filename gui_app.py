@@ -12,13 +12,15 @@ from PySide6.QtWidgets import (
     QMainWindow, QApplication, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QLabel, QPushButton, QListWidget, QListWidgetItem, QSplitter, QStatusBar,
     QMenu, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
-    QFrame, QStackedWidget
+    QFrame, QStackedWidget, QToolButton
 )
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
-from PySide6.QtGui import QIcon, QAction, QKeySequence
+from PySide6.QtGui import QIcon, QAction, QKeySequence, QGuiApplication
 
-from gui_widgets import AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget, StatusBarWithProgress, \
-    TitleBarWidget
+from gui_widgets import (
+    AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget,
+    StatusBarWithProgress, TitleBarWidget, CopyButton, KeySequenceEdit
+)
 from gui_dialogs import (
     ConfirmDialog, AppFormDialog, DesktopFileDialog, ShortcutDialog,
     SettingsDialog, AboutDialog
@@ -146,6 +148,8 @@ class KaylandGUI(QMainWindow):
         self.app_list = QListWidget()
         self.app_list.setSelectionMode(QListWidget.SingleSelection)
         self.app_list.itemSelectionChanged.connect(self.on_app_selected)
+        self.app_list.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.app_list.customContextMenuRequested.connect(self.show_app_context_menu)
         left_layout.addWidget(self.app_list)
 
         # App buttons
@@ -163,12 +167,72 @@ class KaylandGUI(QMainWindow):
         launch_app_button.clicked.connect(self.launch_app)
         app_buttons_layout.addWidget(launch_app_button)
 
+        # Copy dropdown
+        copy_menu_btn = QToolButton()
+        copy_menu_btn.setText("Copy ▼")
+        copy_menu_btn.setPopupMode(QToolButton.InstantPopup)
+        copy_menu = QMenu(copy_menu_btn)
+        copy_menu_btn.setMenu(copy_menu)
+
+        copy_launch_action = QAction("Copy 'kayland launch' Command", self)
+        copy_launch_action.triggered.connect(lambda: self.copy_app_attribute("launch_command"))
+        copy_menu.addAction(copy_launch_action)
+
+        copy_name_action = QAction("Copy Name", self)
+        copy_name_action.triggered.connect(lambda: self.copy_app_attribute("name"))
+        copy_menu.addAction(copy_name_action)
+
+        copy_cmd_action = QAction("Copy Command", self)
+        copy_cmd_action.triggered.connect(lambda: self.copy_app_attribute("command"))
+        copy_menu.addAction(copy_cmd_action)
+
+        copy_class_action = QAction("Copy Class Pattern", self)
+        copy_class_action.triggered.connect(lambda: self.copy_app_attribute("class_pattern"))
+        copy_menu.addAction(copy_class_action)
+
+        copy_aliases_action = QAction("Copy Aliases", self)
+        copy_aliases_action.triggered.connect(lambda: self.copy_app_attribute("aliases"))
+        copy_menu.addAction(copy_aliases_action)
+
+        copy_desktop_action = QAction("Copy Desktop File Path", self)
+        copy_desktop_action.triggered.connect(lambda: self.copy_app_attribute("desktop_file"))
+        copy_menu.addAction(copy_desktop_action)
+
+        copy_id_action = QAction("Copy ID", self)
+        copy_id_action.triggered.connect(lambda: self.copy_app_attribute("id"))
+        copy_menu.addAction(copy_id_action)
+
+        copy_script_action = QAction("Copy Script Path", self)
+        copy_script_action.triggered.connect(lambda: self.copy_app_attribute("script_path"))
+        copy_menu.addAction(copy_script_action)
+
+        app_buttons_layout.addWidget(copy_menu_btn)
+
         left_layout.addLayout(app_buttons_layout)
 
         # Right panel - details and logs
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
         right_layout.setContentsMargins(5, 5, 5, 5)
+
+        # App details header with copy button
+        details_header_layout = QHBoxLayout()
+        details_header = QLabel("Application Details")
+        details_header.setProperty("heading", True)
+        details_header_layout.addWidget(details_header)
+
+        details_copy_btn = QToolButton()
+        details_copy_btn.setText("Copy ▼")
+        details_copy_btn.setPopupMode(QToolButton.InstantPopup)
+        details_copy_menu = QMenu(details_copy_btn)
+        details_copy_btn.setMenu(details_copy_menu)
+
+        # Add the same copy actions to details menu
+        for action in copy_menu.actions():
+            details_copy_menu.addAction(action)
+
+        details_header_layout.addWidget(details_copy_btn)
+        right_layout.addLayout(details_header_layout)
 
         # Vertical splitter for details and logs
         details_log_splitter = QSplitter(Qt.Vertical)
@@ -216,6 +280,8 @@ class KaylandGUI(QMainWindow):
         self.shortcut_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
         self.shortcut_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
         self.shortcut_table.itemSelectionChanged.connect(self.on_shortcut_selected)
+        self.shortcut_table.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.shortcut_table.customContextMenuRequested.connect(self.show_shortcut_context_menu)
 
         shortcuts_layout.addWidget(self.shortcut_table)
 
@@ -337,6 +403,9 @@ class KaylandGUI(QMainWindow):
         self.launch_app_action.setShortcut(QKeySequence("Ctrl+L"))
         self.launch_app_action.triggered.connect(self.launch_app)
 
+        self.generate_script_action = QAction("Generate App Script", self)
+        self.generate_script_action.triggered.connect(self.generate_app_script)
+
         self.refresh_action = QAction("Refresh", self)
         self.refresh_action.setShortcut(QKeySequence("F5"))
         self.refresh_action.triggered.connect(self.refresh_all)
@@ -398,6 +467,7 @@ class KaylandGUI(QMainWindow):
         apps_menu.addAction(self.edit_app_action)
         apps_menu.addAction(self.copy_app_action)
         apps_menu.addAction(self.launch_app_action)
+        apps_menu.addAction(self.generate_script_action)
         apps_menu.addSeparator()
         apps_menu.addAction(self.refresh_action)
 
@@ -421,6 +491,16 @@ class KaylandGUI(QMainWindow):
         settings_menu.addSeparator()
         settings_menu.addAction(self.about_action)
 
+    def show_file_menu(self):
+        """Show the file menu"""
+        file_menu = QMenu(self)
+        file_menu.addAction(self.exit_action)
+
+        sender = self.sender()
+        if sender:
+            pos = sender.mapToGlobal(sender.rect().bottomLeft())
+            file_menu.exec(pos)
+
     def show_add_menu(self):
         """Show a popup menu for add options"""
         menu = QMenu(self)
@@ -431,6 +511,176 @@ class KaylandGUI(QMainWindow):
         sender_widget = self.sender()
         if sender_widget:
             menu.exec(sender_widget.mapToGlobal(sender_widget.rect().bottomLeft()))
+
+    def show_app_context_menu(self, pos):
+        """Show context menu for application list items"""
+        global_pos = self.app_list.mapToGlobal(pos)
+        selected_items = self.app_list.selectedItems()
+
+        if not selected_items:
+            return
+
+        item = selected_items[0]
+        app_data = item.data(Qt.UserRole)
+
+        if not app_data:
+            return
+
+        # Create menu
+        menu = QMenu(self)
+
+        # Add actions
+        copy_launch_action = QAction("Copy 'kayland launch' Command", self)
+        copy_launch_action.triggered.connect(lambda: self.copy_app_attribute("launch_command", app_data))
+        menu.addAction(copy_launch_action)
+
+        copy_name_action = QAction("Copy Name", self)
+        copy_name_action.triggered.connect(lambda: self.copy_app_attribute("name", app_data))
+        menu.addAction(copy_name_action)
+
+        copy_cmd_action = QAction("Copy Command", self)
+        copy_cmd_action.triggered.connect(lambda: self.copy_app_attribute("command", app_data))
+        menu.addAction(copy_cmd_action)
+
+        copy_class_action = QAction("Copy Class Pattern", self)
+        copy_class_action.triggered.connect(lambda: self.copy_app_attribute("class_pattern", app_data))
+        menu.addAction(copy_class_action)
+
+        aliases = app_data.get("aliases", [])
+        if aliases:
+            copy_aliases_action = QAction("Copy Aliases", self)
+            copy_aliases_action.triggered.connect(lambda: self.copy_app_attribute("aliases", app_data))
+            menu.addAction(copy_aliases_action)
+
+        desktop_file = app_data.get("desktop_file")
+        if desktop_file:
+            copy_desktop_action = QAction("Copy Desktop File Path", self)
+            copy_desktop_action.triggered.connect(lambda: self.copy_app_attribute("desktop_file", app_data))
+            menu.addAction(copy_desktop_action)
+
+        copy_id_action = QAction("Copy ID", self)
+        copy_id_action.triggered.connect(lambda: self.copy_app_attribute("id", app_data))
+        menu.addAction(copy_id_action)
+
+        script_path = app_data.get("script_path")
+        if script_path:
+            copy_script_action = QAction("Copy Script Path", self)
+            copy_script_action.triggered.connect(lambda: self.copy_app_attribute("script_path", app_data))
+            menu.addAction(copy_script_action)
+
+        menu.addSeparator()
+
+        # Add regular actions
+        edit_action = QAction("Edit", self)
+        edit_action.triggered.connect(self.edit_app)
+        menu.addAction(edit_action)
+
+        copy_action = QAction("Duplicate", self)
+        copy_action.triggered.connect(self.copy_app)
+        menu.addAction(copy_action)
+
+        launch_action = QAction("Launch", self)
+        launch_action.triggered.connect(self.launch_app)
+        menu.addAction(launch_action)
+
+        # Show menu
+        menu.exec(global_pos)
+
+    def show_shortcut_context_menu(self, pos):
+        """Show context menu for shortcut table items"""
+        global_pos = self.shortcut_table.mapToGlobal(pos)
+        selected_indexes = self.shortcut_table.selectedIndexes()
+
+        if not selected_indexes:
+            return
+
+        row = selected_indexes[0].row()
+        app_item = self.shortcut_table.item(row, 0)
+        key_item = self.shortcut_table.item(row, 1)
+        desc_item = self.shortcut_table.item(row, 2)
+
+        if not app_item or not key_item:
+            return
+
+        shortcut_id = app_item.data(Qt.UserRole)
+        app_name = app_item.text()
+        key = key_item.text()
+        description = desc_item.text() if desc_item else ""
+
+        # Create menu
+        menu = QMenu(self)
+
+        # Add copy actions
+        copy_key_action = QAction(f"Copy Key: {key}", self)
+        copy_key_action.triggered.connect(lambda: self.copy_to_clipboard(key))
+        menu.addAction(copy_key_action)
+
+        copy_app_action = QAction(f"Copy App: {app_name}", self)
+        copy_app_action.triggered.connect(lambda: self.copy_to_clipboard(app_name))
+        menu.addAction(copy_app_action)
+
+        if description:
+            copy_desc_action = QAction(f"Copy Description", self)
+            copy_desc_action.triggered.connect(lambda: self.copy_to_clipboard(description))
+            menu.addAction(copy_desc_action)
+
+        menu.addSeparator()
+
+        # Add regular actions
+        edit_action = QAction("Edit Shortcut", self)
+        edit_action.triggered.connect(self.edit_shortcut)
+        menu.addAction(edit_action)
+
+        remove_action = QAction("Remove Shortcut", self)
+        remove_action.triggered.connect(self.remove_shortcut)
+        menu.addAction(remove_action)
+
+        # Show menu
+        menu.exec(global_pos)
+
+    def copy_app_attribute(self, attribute, app_data=None):
+        """Copy an app attribute to clipboard"""
+        if not app_data:
+            # Get currently selected app
+            selected_items = self.app_list.selectedItems()
+            if not selected_items:
+                self.show_status_message("No application selected", 3000)
+                return
+
+            item = selected_items[0]
+            app_data = item.data(Qt.UserRole)
+
+        if not app_data:
+            self.show_status_message("No application data available", 3000)
+            return
+
+        # Handle special case for launch command
+        if attribute == "launch_command":
+            launch_cmd = f"kayland launch {app_data['name']}"
+            self.copy_to_clipboard(launch_cmd)
+            self.show_status_message(f"Copied launch command to clipboard", 3000)
+            return
+
+        # Handle special case for aliases
+        if attribute == "aliases":
+            aliases = app_data.get("aliases", [])
+            aliases_text = ", ".join(aliases) if aliases else "None"
+            self.copy_to_clipboard(aliases_text)
+            self.show_status_message(f"Copied aliases to clipboard", 3000)
+            return
+
+        # Regular attribute
+        value = app_data.get(attribute, "")
+        if value:
+            self.copy_to_clipboard(value)
+            self.show_status_message(f"Copied {attribute} to clipboard", 3000)
+        else:
+            self.show_status_message(f"No {attribute} available", 3000)
+
+    def copy_to_clipboard(self, text):
+        """Copy text to clipboard"""
+        clipboard = QGuiApplication.clipboard()
+        clipboard.setText(text)
 
     def refresh_app_list(self):
         """Refresh the application list"""
@@ -690,6 +940,33 @@ class KaylandGUI(QMainWindow):
                 )
         except Exception as e:
             error_msg = f"Failed to launch application: {str(e)}"
+            logger.error(error_msg)
+            self.add_log_entry(error_msg, "error")
+            self.show_status_message(error_msg, 5000)
+
+    def generate_app_script(self):
+        """Generate a shell script for the selected application"""
+        if not self.selected_app_id:
+            self.show_status_message("No application selected", 3000)
+            return
+
+        try:
+            app = self.app_manager.get_app_by_id(self.selected_app_id)
+            if app:
+                script_path = self.app_manager.generate_app_script(self.selected_app_id)
+                message = f"Generated script for {app['name']}: {script_path}"
+                self.add_log_entry(message, "success")
+                self.show_status_message(f"Script generated: {os.path.basename(script_path)}")
+
+                # Copy path to clipboard
+                clipboard = QGuiApplication.clipboard()
+                clipboard.setText(script_path)
+                self.show_status_message(f"Script path copied to clipboard", 3000)
+
+                # Refresh app details to show script path
+                self.refresh_app_list()
+        except Exception as e:
+            error_msg = f"Failed to generate script: {str(e)}"
             logger.error(error_msg)
             self.add_log_entry(error_msg, "error")
             self.show_status_message(error_msg, 5000)

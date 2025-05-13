@@ -128,6 +128,12 @@ def check_environment():
         print("Please install kdotool first: https://github.com/jinliu/kdotool")
         return False
 
+# Create scripts directory if it doesn't exist
+def setup_scripts_dir():
+    """Setup scripts directory in config folder"""
+    scripts_dir = os.path.expanduser("~/.config/kayland/scripts")
+    os.makedirs(scripts_dir, exist_ok=True)
+    return scripts_dir
 
 def run_gui():
     """Run the Kayland GUI"""
@@ -136,6 +142,9 @@ def run_gui():
         if not check_environment():
             print("Error: kdotool is required for window management. See log for details.")
             return 1
+
+        # Setup scripts directory
+        setup_scripts_dir()
 
         # Initialize managers
         window_manager = WindowManager()

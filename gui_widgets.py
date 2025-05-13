@@ -6,17 +6,53 @@ import logging
 from typing import Dict, List, Any, Optional, Callable
 
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer, QPoint
-from PySide6.QtGui import QIcon, QColor, QStandardItemModel, QStandardItem, QAction
+from PySide6.QtGui import QIcon, QColor, QStandardItemModel, QStandardItem, QAction, QGuiApplication
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QTextBrowser, QSplitter, QTableWidget, QTableWidgetItem,
     QGroupBox, QFormLayout, QLineEdit, QFrame, QMenu, QTextEdit,
-    QListView, QAbstractItemView, QStatusBar, QProgressBar
+    QListView, QAbstractItemView, QStatusBar, QProgressBar, QToolButton, QApplication
 )
 
 from gui_utils import SYNTHWAVE_COLORS
 
 logger = logging.getLogger("kayland.gui.widgets")
+
+
+class CopyButton(QPushButton):
+    """Button that copies text to clipboard when clicked"""
+
+    copied = Signal(str)
+
+    def __init__(self, text_to_copy="", parent=None):
+        super().__init__(parent)
+        self.text_to_copy = text_to_copy
+        self.setText("Copy")
+        self.setToolTip("Copy to clipboard")
+        self.clicked.connect(self.copy_to_clipboard)
+
+    def set_text(self, text):
+        """Set the text to copy"""
+        self.text_to_copy = text
+
+    def copy_to_clipboard(self):
+        """Copy the text to the clipboard"""
+        if self.text_to_copy:
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(self.text_to_copy)
+            self.copied.emit(self.text_to_copy)
+
+            # Show temporary feedback
+            self.setText("Copied!")
+            self.setEnabled(False)
+
+            # Reset after a delay
+            QTimer.singleShot(1500, self.reset_button)
+
+    def reset_button(self):
+        """Reset the button text and state"""
+        self.setText("Copy")
+        self.setEnabled(True)
 
 
 class TitleBarWidget(QWidget):
@@ -32,7 +68,7 @@ class TitleBarWidget(QWidget):
         self.parent = parent
         self.title_text = title
         self.is_pinned = False
-        self.dragPos = None
+        self.dragPosition = None
 
         # Set up layout
         layout = QHBoxLayout(self)
@@ -185,20 +221,24 @@ class TitleBarWidget(QWidget):
     def mousePressEvent(self, event):
         """Handle mouse press events for dragging the window"""
         if event.button() == Qt.LeftButton:
-            self.dragPos = event.globalPosition().toPoint()
+            # Store the global click position relative to window top-left corner
+            self.dragPosition = event.globalPosition().toPoint() - self.parent.frameGeometry().topLeft()
+            self.setCursor(Qt.ClosedHandCursor)
             event.accept()
 
     def mouseMoveEvent(self, event):
         """Handle mouse move events for dragging the window"""
-        if event.buttons() == Qt.LeftButton and self.dragPos is not None:
+        if event.buttons() == Qt.LeftButton and self.dragPosition is not None:
+            # Calculate new position based on difference between current position and stored offset
+            newPos = event.globalPosition().toPoint() - self.dragPosition
             if self.parent:
-                self.parent.move(self.parent.pos() + event.globalPosition().toPoint() - self.dragPos)
-                self.dragPos = event.globalPosition().toPoint()
-                event.accept()
+                self.parent.move(newPos)
+            event.accept()
 
     def mouseReleaseEvent(self, event):
         """Handle mouse release events"""
-        self.dragPos = None
+        self.dragPosition = None
+        self.setCursor(Qt.ArrowCursor)
         event.accept()
 
     def mouseDoubleClickEvent(self, event):
@@ -315,18 +355,34 @@ class AppDetailWidget(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self.parent_app = parent
+        self.current_app = None
 
         layout = QVBoxLayout(self)
 
         # Title
-        title = QLabel("Application Details")
-        title.setProperty("heading", True)
-        layout.addWidget(title)
+        self.title_layout = QHBoxLayout()
+        self.title = QLabel("Application Details")
+        self.title.setProperty("heading", True)
+        self.title_layout.addWidget(self.title)
+
+        # Add copy dropdown to the title bar
+        self.copy_btn = QToolButton()
+        self.copy_btn.setText("Copy ▼")
+        self.copy_btn.setPopupMode(QToolButton.InstantPopup)
+        self.copy_btn.setVisible(False)  # Hide initially
+        self.copy_menu = QMenu(self.copy_btn)
+        self.copy_btn.setMenu(self.copy_menu)
+        self.title_layout.addWidget(self.copy_btn)
+
+        layout.addLayout(self.title_layout)
 
         # Details display
         self.detail_display = QTextBrowser()
         self.detail_display.setReadOnly(True)
         self.detail_display.setOpenExternalLinks(False)
+        self.detail_display.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.detail_display.customContextMenuRequested.connect(self.show_detail_context_menu)
         layout.addWidget(self.detail_display)
 
         # Set layout margins
@@ -334,8 +390,14 @@ class AppDetailWidget(QWidget):
 
     def update_details(self, app: Optional[Dict[str, Any]]) -> None:
         """Update the details display with app information"""
+        self.current_app = app
+        self.copy_btn.setVisible(bool(app))  # Show copy button only if app exists
+
         try:
             if app:
+                # Update copy menu
+                self.update_copy_menu(app)
+
                 # Build HTML content
                 html = "<table width='100%'>"
 
@@ -357,6 +419,15 @@ class AppDetailWidget(QWidget):
                 # Add ID
                 html += self._create_detail_row("ID", app["id"], SYNTHWAVE_COLORS["accent3"])
 
+                # Add launch command
+                launch_cmd = f"kayland launch {app['name']}"
+                html += self._create_detail_row("Launch Command", launch_cmd, SYNTHWAVE_COLORS["accent3"])
+
+                # Add script path if any
+                script_path = app.get("script_path", "")
+                if script_path:
+                    html += self._create_detail_row("Script Path", script_path, SYNTHWAVE_COLORS["accent3"])
+
                 html += "</table>"
 
                 # Check for shortcuts associated with this app
@@ -372,6 +443,115 @@ class AppDetailWidget(QWidget):
         except Exception as e:
             logger.error(f"Error updating app details: {str(e)}")
             self.detail_display.setHtml(f"<p>Error displaying details: {str(e)}</p>")
+
+    def update_copy_menu(self, app: Dict[str, Any]) -> None:
+        """Update the copy menu items"""
+        self.copy_menu.clear()
+
+        # Add copy actions
+        launch_action = QAction("Copy 'kayland launch' Command", self)
+        launch_action.triggered.connect(lambda: self.copy_attribute("launch_command"))
+        self.copy_menu.addAction(launch_action)
+
+        name_action = QAction("Copy Name", self)
+        name_action.triggered.connect(lambda: self.copy_attribute("name"))
+        self.copy_menu.addAction(name_action)
+
+        cmd_action = QAction("Copy Command", self)
+        cmd_action.triggered.connect(lambda: self.copy_attribute("command"))
+        self.copy_menu.addAction(cmd_action)
+
+        class_action = QAction("Copy Class Pattern", self)
+        class_action.triggered.connect(lambda: self.copy_attribute("class_pattern"))
+        self.copy_menu.addAction(class_action)
+
+        if app.get("aliases"):
+            aliases_action = QAction("Copy Aliases", self)
+            aliases_action.triggered.connect(lambda: self.copy_attribute("aliases"))
+            self.copy_menu.addAction(aliases_action)
+
+        if app.get("desktop_file"):
+            desktop_action = QAction("Copy Desktop File Path", self)
+            desktop_action.triggered.connect(lambda: self.copy_attribute("desktop_file"))
+            self.copy_menu.addAction(desktop_action)
+
+        id_action = QAction("Copy ID", self)
+        id_action.triggered.connect(lambda: self.copy_attribute("id"))
+        self.copy_menu.addAction(id_action)
+
+        if app.get("script_path"):
+            script_action = QAction("Copy Script Path", self)
+            script_action.triggered.connect(lambda: self.copy_attribute("script_path"))
+            self.copy_menu.addAction(script_action)
+
+    def copy_attribute(self, attribute: str) -> None:
+        """Copy an app attribute to clipboard"""
+        if not self.current_app:
+            return
+
+        if attribute == "launch_command":
+            text = f"kayland launch {self.current_app['name']}"
+        elif attribute == "aliases":
+            aliases = self.current_app.get("aliases", [])
+            text = ", ".join(aliases) if aliases else "None"
+        else:
+            text = self.current_app.get(attribute, "")
+
+        if text:
+            # Copy to clipboard
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(text)
+
+            # Show status message if parent app is available
+            if hasattr(self.parent_app, "show_status_message"):
+                self.parent_app.show_status_message(f"Copied {attribute} to clipboard", 3000)
+
+    def show_detail_context_menu(self, pos):
+        """Show context menu for the detail display"""
+        if not self.current_app:
+            return
+
+        menu = QMenu(self)
+
+        # Add actions to copy different attributes
+        launch_action = QAction("Copy 'kayland launch' Command", self)
+        launch_action.triggered.connect(lambda: self.copy_attribute("launch_command"))
+        menu.addAction(launch_action)
+
+        name_action = QAction("Copy Name", self)
+        name_action.triggered.connect(lambda: self.copy_attribute("name"))
+        menu.addAction(name_action)
+
+        cmd_action = QAction("Copy Command", self)
+        cmd_action.triggered.connect(lambda: self.copy_attribute("command"))
+        menu.addAction(cmd_action)
+
+        class_action = QAction("Copy Class Pattern", self)
+        class_action.triggered.connect(lambda: self.copy_attribute("class_pattern"))
+        menu.addAction(class_action)
+
+        if self.current_app.get("aliases"):
+            aliases_action = QAction("Copy Aliases", self)
+            aliases_action.triggered.connect(lambda: self.copy_attribute("aliases"))
+            menu.addAction(aliases_action)
+
+        if self.current_app.get("desktop_file"):
+            desktop_action = QAction("Copy Desktop File Path", self)
+            desktop_action.triggered.connect(lambda: self.copy_attribute("desktop_file"))
+            menu.addAction(desktop_action)
+
+        id_action = QAction("Copy ID", self)
+        id_action.triggered.connect(lambda: self.copy_attribute("id"))
+        menu.addAction(id_action)
+
+        if self.current_app.get("script_path"):
+            script_action = QAction("Copy Script Path", self)
+            script_action.triggered.connect(lambda: self.copy_attribute("script_path"))
+            menu.addAction(script_action)
+
+        # Show menu at cursor position
+        global_pos = self.detail_display.mapToGlobal(pos)
+        menu.exec(global_pos)
 
     def _create_detail_row(self, label: str, value: str, label_color: str) -> str:
         """Create an HTML row for the details table"""
@@ -409,7 +589,6 @@ class AppDetailWidget(QWidget):
                 self.detail_display.setHtml(current_html + shortcuts_html)
         except Exception as e:
             logger.error(f"Error updating shortcuts: {str(e)}")
-
 
 class ServiceStatusWidget(QWidget):
     """Widget showing systemd service status and controls"""
@@ -585,3 +764,91 @@ class StatusBarWithProgress(QStatusBar):
     def setProgress(self, value: int) -> None:
         """Set the progress bar value"""
         self.progress_bar.setValue(value)
+
+
+class KeySequenceEdit(QLineEdit):
+    """Custom widget to capture key sequences directly"""
+
+    keySequenceChanged = Signal(str)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setReadOnly(True)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFocusPolicy(Qt.StrongFocus)
+        self.setPlaceholderText("Click and press shortcut keys")
+        self.key_sequence = ""
+
+    def keyPressEvent(self, event):
+        """Capture key presses and convert to shortcut format"""
+        key = event.key()
+        modifiers = event.modifiers()
+
+        # Skip some keys that shouldn't be used in shortcuts
+        if key in (Qt.Key_Shift, Qt.Key_Control, Qt.Key_Alt, Qt.Key_Meta):
+            return
+
+        sequence = []
+
+        # Add modifiers
+        if modifiers & Qt.ControlModifier:
+            sequence.append("ctrl")
+        if modifiers & Qt.AltModifier:
+            sequence.append("alt")
+        if modifiers & Qt.ShiftModifier:
+            sequence.append("shift")
+        if modifiers & Qt.MetaModifier:
+            sequence.append("meta")
+
+        # Add the key
+        key_text = ""
+        if Qt.Key_A <= key <= Qt.Key_Z:
+            key_text = chr(key).lower()
+        elif Qt.Key_0 <= key <= Qt.Key_9:
+            key_text = chr(key)
+        elif Qt.Key_F1 <= key <= Qt.Key_F12:
+            key_text = f"f{key - Qt.Key_F1 + 1}"
+        elif key == Qt.Key_Space:
+            key_text = "space"
+        elif key == Qt.Key_Tab:
+            key_text = "tab"
+        elif key == Qt.Key_Return or key == Qt.Key_Enter:
+            key_text = "return"
+        elif key == Qt.Key_Escape:
+            key_text = "escape"
+        elif key == Qt.Key_Home:
+            key_text = "home"
+        elif key == Qt.Key_End:
+            key_text = "end"
+        elif key == Qt.Key_Left:
+            key_text = "left"
+        elif key == Qt.Key_Right:
+            key_text = "right"
+        elif key == Qt.Key_Up:
+            key_text = "up"
+        elif key == Qt.Key_Down:
+            key_text = "down"
+        elif key == Qt.Key_PageUp:
+            key_text = "pageup"
+        elif key == Qt.Key_PageDown:
+            key_text = "pagedown"
+        elif key == Qt.Key_Insert:
+            key_text = "insert"
+        elif key == Qt.Key_Delete:
+            key_text = "delete"
+
+        if key_text:
+            sequence.append(key_text)
+
+        # Create shortcut text
+        if sequence:
+            self.key_sequence = "+".join(sequence)
+            self.setText(self.key_sequence)
+            self.keySequenceChanged.emit(self.key_sequence)
+
+        event.accept()
+
+    def clear(self):
+        """Clear the key sequence"""
+        super().clear()
+        self.key_sequence = ""

@@ -31,12 +31,12 @@ SYNTHWAVE_COLORS = {
     "dark_bg": "#150a2d",
     "mid_bg": "#3b1f5f",
     "hover_purple": "#e464ff",  # Lighter synthwave purple for hover states
-    "active_text": "#150a2d",   # Dark text for active tabs and button hover
+    "active_text": "#150a2d",  # Dark text for active tabs and button hover
 }
 
 
 def apply_synthwave_theme(app):
-    """Apply a synthwave-inspired dark theme to the application with 15% larger UI"""
+    """Apply a synthwave-inspired dark theme to the application with larger UI"""
     palette = QPalette()
 
     # Set color role for the application
@@ -57,37 +57,52 @@ def apply_synthwave_theme(app):
     # Apply the palette to the application
     app.setPalette(palette)
 
-    # Increase font size by 15%
-    font = app.font()
-    font_size = font.pointSizeF()
-    if font_size > 0:
-        font.setPointSizeF(font_size * 1.15)
-    else:
-        pixel_size = font.pixelSize()
-        font.setPixelSize(int(pixel_size * 1.15))
-    app.setFont(font)
+    # Set default retro font family for buttons and menus
+    retro_fonts = ["VT323", "PixeloidSans", "Press Start 2P", "Courier New", "OCR A Extended", "Monaco", "monospace"]
+
+    # Try to find an available retro font
+    selected_font = None
+    for font_name in retro_fonts:
+        font = QFont(font_name)
+        if font.exactMatch():
+            selected_font = font_name
+            break
+
+    # If no specific retro font found, use Courier as fallback
+    if not selected_font:
+        selected_font = "Courier New"
+
+    # Set standard font for content (default app font)
+    standard_font = QFont("Sans Serif", 13)  # Larger size for better readability
+    app.setFont(standard_font)
 
     # Set stylesheet for additional controls that aren't covered by the palette
-    # With 15% larger sizes for all elements
+    # With larger sizes for all elements
     stylesheet = f"""
     QMainWindow, QDialog {{
         background-color: {SYNTHWAVE_COLORS["background"]};
         margin: 0;
         padding: 0;
         border: none;
+        font-size: 13pt;
     }}
 
     QMenuBar {{
-        background-color: {SYNTHWAVE_COLORS["background"]};
+        background-color: {SYNTHWAVE_COLORS["dark_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        font-size: 12pt;
-        min-height: 28px;
+        font-size: 13pt;
+        font-family: "{selected_font}";
+        min-height: 32px;
+        padding: 2px;
+        margin: 0;
+        border: none;
     }}
 
     QMenuBar::item {{
-        background-color: {SYNTHWAVE_COLORS["background"]};
+        background-color: {SYNTHWAVE_COLORS["dark_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        padding: 5px 10px;
+        padding: 6px 12px;
+        font-family: "{selected_font}";
     }}
 
     QMenuBar::item:selected {{
@@ -98,12 +113,14 @@ def apply_synthwave_theme(app):
     QMenu {{
         background-color: {SYNTHWAVE_COLORS["dark_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        font-size: 11pt;
+        font-size: 13pt;
+        font-family: "{selected_font}";
         padding: 5px;
     }}
 
     QMenu::item {{
         padding: 6px 20px 6px 20px;
+        font-family: "{selected_font}";
     }}
 
     QMenu::item:selected {{
@@ -119,12 +136,13 @@ def apply_synthwave_theme(app):
     QTabBar::tab {{
         background-color: {SYNTHWAVE_COLORS["dark_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        padding: 10px 18px;
+        padding: 12px 20px;
         border: 1px solid {SYNTHWAVE_COLORS["accent4"]};
         border-bottom: none;
         border-top-left-radius: 4px;
         border-top-right-radius: 4px;
-        font-size: 11pt;
+        font-size: 13pt;
+        font-family: "{selected_font}";
     }}
 
     QTabBar::tab:selected {{
@@ -142,9 +160,9 @@ def apply_synthwave_theme(app):
         color: {SYNTHWAVE_COLORS["foreground"]};
         border: 1px solid {SYNTHWAVE_COLORS["accent4"]};
         border-radius: 4px;
-        padding: 5px;
-        font-size: 11pt;
-        min-height: 25px;
+        padding: 6px;
+        font-size: 13pt;
+        min-height: 28px;
     }}
 
     QLineEdit:focus, QTextEdit:focus, QPlainTextEdit:focus, QComboBox:focus {{
@@ -155,10 +173,11 @@ def apply_synthwave_theme(app):
         background-color: {SYNTHWAVE_COLORS["accent2"]};
         color: {SYNTHWAVE_COLORS["mid_bg"]};
         border-radius: 4px;
-        padding: 8px 15px;
+        padding: 10px 18px;
         border: none;
-        font-size: 11pt;
-        min-height: 30px;
+        font-size: 13pt;
+        font-family: "{selected_font}";
+        min-height: 36px;
     }}
 
     QPushButton:hover {{
@@ -178,7 +197,7 @@ def apply_synthwave_theme(app):
         border-radius: 4px;
         selection-background-color: {SYNTHWAVE_COLORS["mid_bg"]};
         selection-color: {SYNTHWAVE_COLORS["foreground"]};
-        font-size: 11pt;
+        font-size: 13pt;
     }}
 
     QListView::item:selected {{
@@ -189,46 +208,48 @@ def apply_synthwave_theme(app):
     QHeaderView::section {{
         background-color: {SYNTHWAVE_COLORS["mid_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        padding: 5px;
+        padding: 6px;
         border: 1px solid {SYNTHWAVE_COLORS["accent4"]};
-        font-size: 11pt;
+        font-size: 13pt;
+        font-family: "{selected_font}";
     }}
 
     QGroupBox {{
         border: 1px solid {SYNTHWAVE_COLORS["accent4"]};
         border-radius: 4px;
-        margin-top: 20px;
-        font-size: 11pt;
+        margin-top: 24px;
+        font-size: 13pt;
     }}
 
     QGroupBox::title {{
         color: {SYNTHWAVE_COLORS["accent2"]};
         subcontrol-origin: margin;
         left: 10px;
-        padding: 0 7px;
+        padding: 0 8px;
+        font-size: 13pt;
     }}
 
     QStatusBar {{
         background-color: {SYNTHWAVE_COLORS["dark_bg"]};
         color: {SYNTHWAVE_COLORS["accent2"]};
-        font-size: 10pt;
+        font-size: 12pt;
     }}
 
     QLabel {{
         color: {SYNTHWAVE_COLORS["foreground"]};
-        font-size: 11pt;
+        font-size: 13pt;
     }}
 
     QLabel[title="true"] {{
         color: {SYNTHWAVE_COLORS["accent2"]};
         font-weight: bold;
-        font-size: 12pt;
+        font-size: 14pt;
     }}
 
     QLabel[heading="true"] {{
         color: {SYNTHWAVE_COLORS["accent"]};
         font-weight: bold;
-        font-size: 16px;
+        font-size: 18px;
     }}
     """
 
