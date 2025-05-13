@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (
     QMenu, QMessageBox, QTableWidget, QTableWidgetItem, QHeaderView,
     QFrame, QStackedWidget
 )
+# IMPORTANT: QAction belongs in QtGui, not QtWidgets
 from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
 from PySide6.QtGui import QIcon, QAction, QKeySequence
 

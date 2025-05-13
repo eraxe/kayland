@@ -29,22 +29,47 @@ if script_dir not in sys.path:
 
 # Check for PySide6 package
 try:
+    # Import core PySide6 modules, including QAction from the right place
     from PySide6.QtWidgets import QApplication
     from PySide6.QtCore import QCoreApplication, Qt
-    from PySide6.QtGui import QAction  # The correct import for QAction
+    from PySide6.QtGui import QAction  # QAction is in QtGui, not QtWidgets
 except ImportError as e:
     logger.error(f"Failed to import PySide6: {str(e)}")
     print("Error: The PySide6 package is required for GUI mode.")
-    print("Please install it with: pip install --user pyside6")
-    print("For Arch Linux users: 'sudo pacman -S python-pyside6' or 'yay -S python-pyside6'")
+    print("Please install it with: sudo pacman -S python-pyside6")
     sys.exit(1)
 
-# Import the required modules
+# Import the required modules with better error handling
 try:
-    from window_manager import WindowManager
-    from app_manager import AppManager
-    from gui_app import KaylandGUI
-    from gui_utils import Settings
+    # Try importing each module separately to isolate which one fails
+    try:
+        from window_manager import WindowManager
+    except ImportError as e:
+        logger.error(f"Failed to import WindowManager: {str(e)}")
+        raise
+
+    try:
+        from app_manager import AppManager
+    except ImportError as e:
+        logger.error(f"Failed to import AppManager: {str(e)}")
+        raise
+
+    try:
+        from gui_utils import Settings
+    except ImportError as e:
+        logger.error(f"Failed to import Settings: {str(e)}")
+        raise
+
+    try:
+        from gui_app import KaylandGUI
+    except ImportError as e:
+        # This is likely the problematic import
+        logger.error(f"Failed to import KaylandGUI: {str(e)}")
+        import traceback
+
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise
+
 except ImportError as e:
     logger.error(f"Failed to import required modules: {str(e)}")
     print(f"Error: Failed to import required modules: {str(e)}")

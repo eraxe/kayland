@@ -10,7 +10,7 @@ from PySide6.QtGui import QIcon, QColor, QStandardItemModel, QStandardItem, QAct
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QPushButton, QListWidget,
     QListWidgetItem, QTextBrowser, QSplitter, QTableWidget, QTableWidgetItem,
-    QGroupBox, QFormLayout, QLineEdit, QFrame, QMenu, QAction, QTextEdit,
+    QGroupBox, QFormLayout, QLineEdit, QFrame, QMenu, QTextEdit,
     QListView, QAbstractItemView, QStatusBar, QProgressBar
 )
 
