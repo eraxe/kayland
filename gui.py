@@ -151,7 +151,7 @@ def run_gui():
         app_manager = AppManager()
         settings = Settings()
 
-        # Initialize QApplication with dark theme
+        # Initialize QApplication
         QCoreApplication.setAttribute(Qt.AA_ShareOpenGLContexts)
         app = QApplication(sys.argv)
 

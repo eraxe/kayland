@@ -17,7 +17,8 @@ logger = logging.getLogger("kayland.gui.utils")
 DEFAULT_SETTINGS = {
     "desktop_file_dir": "~/.local/share/applications",
     "theme": "system",
-    "confirm_delete": "True"
+    "confirm_delete": "True",
+    "log_level": "INFO"
 }
 
 # Dark theme colors for the GUI that match the synthwave feel of the TUI
@@ -263,6 +264,11 @@ class Settings:
         self.settings_file = os.path.expanduser("~/.config/kayland/settings.json")
         self.settings = DEFAULT_SETTINGS.copy()
         self._load_settings()
+
+        # Apply log level from settings
+        log_level = self.get("log_level", "INFO")
+        root_logger = logging.getLogger()
+        root_logger.setLevel(getattr(logging, log_level))
 
     def _load_settings(self):
         """Load settings from file"""

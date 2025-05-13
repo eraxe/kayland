@@ -281,10 +281,22 @@ class LogWidget(QWidget):
 
         layout = QVBoxLayout(self)
 
+        # Title and copy buttons section
+        header_layout = QHBoxLayout()
+
         # Title
         title = QLabel("System Logs")
         title.setProperty("heading", True)
-        layout.addWidget(title)
+        header_layout.addWidget(title)
+
+        # Copy all logs button
+        self.copy_all_button = CopyButton("", self)
+        self.copy_all_button.setText("Copy All")
+        self.copy_all_button.setToolTip("Copy all logs to clipboard")
+        self.copy_all_button.clicked.connect(self.copy_all_logs)
+        header_layout.addWidget(self.copy_all_button)
+
+        layout.addLayout(header_layout)
 
         # Log display
         self.log_display = QTextBrowser()
@@ -310,16 +322,20 @@ class LogWidget(QWidget):
                 "success": "#00ff00"
             }.get(level, SYNTHWAVE_COLORS["foreground"])
 
-            # Format multi-line messages
+            # Format multi-line messages and add copy button
+            copy_button_html = f'<button class="copy-button" onclick="copyToClipboard(\'{message.replace("\'", "\\\'")}\')">Copy</button>'
+
             if "\n" in message:
                 lines = message.split("\n")
-                html = f'<span style="color: #aaaaaa">[{timestamp}]</span> <span style="color: {color}">{lines[0]}</span><br>'
+                html = f'<div class="log-entry"><span style="color: #aaaaaa">[{timestamp}]</span> <span style="color: {color}">{lines[0]}</span> {copy_button_html}<br>'
 
                 # Format remaining lines with indentation
                 for line in lines[1:]:
                     html += f'<span style="color: {color}">&nbsp;&nbsp;&nbsp;&nbsp;{line}</span><br>'
+
+                html += '</div>'
             else:
-                html = f'<span style="color: #aaaaaa">[{timestamp}]</span> <span style="color: {color}">{message}</span><br>'
+                html = f'<div class="log-entry"><span style="color: #aaaaaa">[{timestamp}]</span> <span style="color: {color}">{message}</span> {copy_button_html}</div>'
 
             # Insert at the beginning (newest first)
             self.log_entries.insert(0, html)
@@ -334,6 +350,10 @@ class LogWidget(QWidget):
             # Update display
             self._update_display()
 
+            # Update the copy all button text
+            self.copy_all_button.set_text(
+                "\n".join([entry.replace(copy_button_html, "") for entry in self.log_entries]))
+
         except Exception as e:
             # If we can't update the log UI, log to system logger
             logger.error(f"Failed to update log UI: {str(e)}")
@@ -344,10 +364,70 @@ class LogWidget(QWidget):
     def _update_display(self) -> None:
         """Update the log content display"""
         try:
-            html = "".join(self.log_entries)
+            # Add JavaScript function for copying text
+            js_function = """
+            <script>
+            function copyToClipboard(text) {
+                navigator.clipboard.writeText(text)
+                    .then(() => {
+                        // Show a temporary "Copied!" message
+                        const button = event.target;
+                        const originalText = button.textContent;
+                        button.textContent = "Copied!";
+                        setTimeout(() => {
+                            button.textContent = originalText;
+                        }, 1500);
+                    })
+                    .catch(err => {
+                        console.error('Error copying text: ', err);
+                    });
+            }
+            </script>
+            <style>
+            .copy-button {
+                background-color: transparent;
+                border: 1px solid #00fff5;
+                color: #00fff5;
+                padding: 1px 5px;
+                border-radius: 3px;
+                font-size: 10px;
+                cursor: pointer;
+                margin-left: 5px;
+            }
+            .copy-button:hover {
+                background-color: #e464ff;
+                color: #150a2d;
+            }
+            .log-entry {
+                margin-bottom: 3px;
+                padding: 3px;
+            }
+            </style>
+            """
+
+            html = js_function + "".join(self.log_entries)
             self.log_display.setHtml(html)
         except Exception as e:
             logger.error(f"Error updating log display: {str(e)}")
+
+    def copy_all_logs(self):
+        """Copy all log entries to clipboard"""
+        try:
+            # Extract only the text from log entries without HTML formatting
+            import re
+
+            # Join all log entries
+            combined_html = "".join(self.log_entries)
+
+            # Remove HTML tags and get plain text
+            plain_text = re.sub(r'<[^>]*>', '', combined_html)
+
+            # Copy to clipboard
+            clipboard = QGuiApplication.clipboard()
+            clipboard.setText(plain_text)
+
+        except Exception as e:
+            logger.error(f"Error copying logs: {str(e)}")
 
 
 class AppDetailWidget(QWidget):
@@ -420,7 +500,12 @@ class AppDetailWidget(QWidget):
                 html += self._create_detail_row("ID", app["id"], SYNTHWAVE_COLORS["accent3"])
 
                 # Add launch command
-                launch_cmd = f"kayland launch {app['name']}"
+                aliases = app.get("aliases", [])
+                if aliases:
+                    # Use the first alias if available
+                    launch_cmd = f"kayland launch {aliases[0]}"
+                else:
+                    launch_cmd = f"kayland launch {app['name']}"
                 html += self._create_detail_row("Launch Command", launch_cmd, SYNTHWAVE_COLORS["accent3"])
 
                 # Add script path if any
@@ -490,7 +575,12 @@ class AppDetailWidget(QWidget):
             return
 
         if attribute == "launch_command":
-            text = f"kayland launch {self.current_app['name']}"
+            aliases = self.current_app.get("aliases", [])
+            if aliases:
+                # Use the first alias if available
+                text = f"kayland launch {aliases[0]}"
+            else:
+                text = f"kayland launch {self.current_app['name']}"
         elif attribute == "aliases":
             aliases = self.current_app.get("aliases", [])
             text = ", ".join(aliases) if aliases else "None"
@@ -590,6 +680,7 @@ class AppDetailWidget(QWidget):
         except Exception as e:
             logger.error(f"Error updating shortcuts: {str(e)}")
 
+
 class ServiceStatusWidget(QWidget):
     """Widget showing systemd service status and controls"""
 
@@ -669,13 +760,13 @@ class ServiceStatusWidget(QWidget):
                 self.status_label.setText("● SERVICE RUNNING")
                 self.status_label.setStyleSheet(f"color: #00ff00; font-weight: bold;")
                 if hasattr(self.parent_app, "add_log_entry"):
-                    self.parent_app.add_log_entry("Kayland service is running", "success")
+                    self.parent_app.add_log_entry("Kayland service is running", "success", log_to_ui=False)
             else:
                 self.service_running = False
                 self.status_label.setText("● SERVICE STOPPED")
                 self.status_label.setStyleSheet(f"color: #ff0000; font-weight: bold;")
                 if hasattr(self.parent_app, "add_log_entry"):
-                    self.parent_app.add_log_entry("Kayland service is not running", "warning")
+                    self.parent_app.add_log_entry("Kayland service is not running", "warning", log_to_ui=False)
 
             # Update buttons based on service status
             self.start_button.setEnabled(not self.service_running)
@@ -689,7 +780,9 @@ class ServiceStatusWidget(QWidget):
             )
 
             if hasattr(self.parent_app, "add_log_entry"):
-                self.parent_app.add_log_entry(full_status.stdout, "info")
+                # Log the service status to UI if it contains interesting information
+                if "Failed" in full_status.stdout or "Error" in full_status.stdout:
+                    self.parent_app.add_log_entry(full_status.stdout, "error")
         except Exception as e:
             self.service_running = False
             self.status_label.setText("● SERVICE STATUS ERROR")

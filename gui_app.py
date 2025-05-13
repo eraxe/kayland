@@ -19,7 +19,7 @@ from PySide6.QtGui import QIcon, QAction, QKeySequence, QGuiApplication
 
 from gui_widgets import (
     AppListItem, LogWidget, AppDetailWidget, ServiceStatusWidget,
-    StatusBarWithProgress, TitleBarWidget, CopyButton, KeySequenceEdit
+    StatusBarWithProgress, CopyButton, KeySequenceEdit
 )
 from gui_dialogs import (
     ConfirmDialog, AppFormDialog, DesktopFileDialog, ShortcutDialog,
@@ -34,7 +34,7 @@ class KaylandGUI(QMainWindow):
     """Main window for Kayland GUI"""
 
     def __init__(self, window_manager, app_manager, settings):
-        super().__init__(None, Qt.FramelessWindowHint)  # Set frameless window
+        super().__init__()  # Use system title bar
 
         self.window_manager = window_manager
         self.app_manager = app_manager
@@ -42,6 +42,9 @@ class KaylandGUI(QMainWindow):
 
         self.selected_app_id = None
         self.selected_shortcut_id = None
+
+        # Set window title
+        self.setWindowTitle("Kayland - KDE Wayland Window Manager")
 
         # Set up UI
         self.setup_ui()
@@ -54,7 +57,7 @@ class KaylandGUI(QMainWindow):
         self.refresh_shortcut_list()
 
         # Log startup
-        self.add_log_entry("Kayland GUI started successfully", "info")
+        self.add_log_entry("Kayland GUI started successfully", "info", log_to_ui=False)
 
         # Set window properties
         self.resize(1035, 748)  # 15% larger than original 900x650
@@ -90,28 +93,13 @@ class KaylandGUI(QMainWindow):
         # Create central widget
         central_widget = QWidget()
         main_layout = QVBoxLayout(central_widget)
-        main_layout.setContentsMargins(0, 0, 0, 0)
-        main_layout.setSpacing(0)  # Remove spacing between elements
-
-        # Create custom title bar
-        self.title_bar = TitleBarWidget("Kayland - KDE Wayland Window Manager", self)
-        self.title_bar.closeClicked.connect(self.close)
-        self.title_bar.minimizeClicked.connect(self.showMinimized)
-        self.title_bar.maximizeClicked.connect(self.toggle_maximize)
-        self.title_bar.pinClicked.connect(self.toggle_pin_on_top)
-
-        # Add title bar to layout
-        main_layout.addWidget(self.title_bar)
+        main_layout.setContentsMargins(10, 10, 10, 10)
+        main_layout.setSpacing(10)
 
         # Set window icon
         icon_path = self.get_asset_path("kayland.png")
         if os.path.exists(icon_path):
             self.setWindowIcon(QIcon(icon_path))
-
-        # Create content widget
-        content_widget = QWidget()
-        content_layout = QVBoxLayout(content_widget)
-        content_layout.setContentsMargins(10, 10, 10, 10)
 
         # Create tab widget
         tabs = QTabWidget()
@@ -135,10 +123,8 @@ class KaylandGUI(QMainWindow):
         app_header_layout.addWidget(app_header)
 
         # Add button
-        add_button = QPushButton("+")
-        add_button.setMaximumWidth(30)
-        add_button.setText("+")  # Explicitly set the text to "+"
-        add_button.setToolTip("Add Application")  # Add tooltip
+        add_button = QPushButton("+NEW")
+        add_button.setToolTip("Add Application")
         add_button.clicked.connect(self.show_add_menu)
         app_header_layout.addWidget(add_button)
 
@@ -167,46 +153,11 @@ class KaylandGUI(QMainWindow):
         launch_app_button.clicked.connect(self.launch_app)
         app_buttons_layout.addWidget(launch_app_button)
 
-        # Copy dropdown
-        copy_menu_btn = QToolButton()
-        copy_menu_btn.setText("Copy ▼")
-        copy_menu_btn.setPopupMode(QToolButton.InstantPopup)
-        copy_menu = QMenu(copy_menu_btn)
-        copy_menu_btn.setMenu(copy_menu)
-
-        copy_launch_action = QAction("Copy 'kayland launch' Command", self)
-        copy_launch_action.triggered.connect(lambda: self.copy_app_attribute("launch_command"))
-        copy_menu.addAction(copy_launch_action)
-
-        copy_name_action = QAction("Copy Name", self)
-        copy_name_action.triggered.connect(lambda: self.copy_app_attribute("name"))
-        copy_menu.addAction(copy_name_action)
-
-        copy_cmd_action = QAction("Copy Command", self)
-        copy_cmd_action.triggered.connect(lambda: self.copy_app_attribute("command"))
-        copy_menu.addAction(copy_cmd_action)
-
-        copy_class_action = QAction("Copy Class Pattern", self)
-        copy_class_action.triggered.connect(lambda: self.copy_app_attribute("class_pattern"))
-        copy_menu.addAction(copy_class_action)
-
-        copy_aliases_action = QAction("Copy Aliases", self)
-        copy_aliases_action.triggered.connect(lambda: self.copy_app_attribute("aliases"))
-        copy_menu.addAction(copy_aliases_action)
-
-        copy_desktop_action = QAction("Copy Desktop File Path", self)
-        copy_desktop_action.triggered.connect(lambda: self.copy_app_attribute("desktop_file"))
-        copy_menu.addAction(copy_desktop_action)
-
-        copy_id_action = QAction("Copy ID", self)
-        copy_id_action.triggered.connect(lambda: self.copy_app_attribute("id"))
-        copy_menu.addAction(copy_id_action)
-
-        copy_script_action = QAction("Copy Script Path", self)
-        copy_script_action.triggered.connect(lambda: self.copy_app_attribute("script_path"))
-        copy_menu.addAction(copy_script_action)
-
-        app_buttons_layout.addWidget(copy_menu_btn)
+        # Delete button
+        delete_app_button = QPushButton("Delete")
+        delete_app_button.setStyleSheet(f"background-color: #e464ff; color: #150a2d;")
+        delete_app_button.clicked.connect(self.delete_app)
+        app_buttons_layout.addWidget(delete_app_button)
 
         left_layout.addLayout(app_buttons_layout)
 
@@ -227,9 +178,38 @@ class KaylandGUI(QMainWindow):
         details_copy_menu = QMenu(details_copy_btn)
         details_copy_btn.setMenu(details_copy_menu)
 
-        # Add the same copy actions to details menu
-        for action in copy_menu.actions():
-            details_copy_menu.addAction(action)
+        # Add copy actions to details menu
+        copy_launch_action = QAction("Copy 'kayland launch' Command", self)
+        copy_launch_action.triggered.connect(lambda: self.copy_app_attribute("launch_command"))
+        details_copy_menu.addAction(copy_launch_action)
+
+        copy_name_action = QAction("Copy Name", self)
+        copy_name_action.triggered.connect(lambda: self.copy_app_attribute("name"))
+        details_copy_menu.addAction(copy_name_action)
+
+        copy_cmd_action = QAction("Copy Command", self)
+        copy_cmd_action.triggered.connect(lambda: self.copy_app_attribute("command"))
+        details_copy_menu.addAction(copy_cmd_action)
+
+        copy_class_action = QAction("Copy Class Pattern", self)
+        copy_class_action.triggered.connect(lambda: self.copy_app_attribute("class_pattern"))
+        details_copy_menu.addAction(copy_class_action)
+
+        copy_aliases_action = QAction("Copy Aliases", self)
+        copy_aliases_action.triggered.connect(lambda: self.copy_app_attribute("aliases"))
+        details_copy_menu.addAction(copy_aliases_action)
+
+        copy_desktop_action = QAction("Copy Desktop File Path", self)
+        copy_desktop_action.triggered.connect(lambda: self.copy_app_attribute("desktop_file"))
+        details_copy_menu.addAction(copy_desktop_action)
+
+        copy_id_action = QAction("Copy ID", self)
+        copy_id_action.triggered.connect(lambda: self.copy_app_attribute("id"))
+        details_copy_menu.addAction(copy_id_action)
+
+        copy_script_action = QAction("Copy Script Path", self)
+        copy_script_action.triggered.connect(lambda: self.copy_app_attribute("script_path"))
+        details_copy_menu.addAction(copy_script_action)
 
         details_header_layout.addWidget(details_copy_btn)
         right_layout.addLayout(details_header_layout)
@@ -343,8 +323,7 @@ class KaylandGUI(QMainWindow):
         tabs.addTab(service_tab, "Service")
         tabs.addTab(settings_tab, "Settings")
 
-        content_layout.addWidget(tabs)
-        main_layout.addWidget(content_widget)
+        main_layout.addWidget(tabs)
 
         # Set central widget
         self.setCentralWidget(central_widget)
@@ -359,22 +338,6 @@ class KaylandGUI(QMainWindow):
 
         # Store references to important widgets
         self.tabs = tabs
-
-    def toggle_maximize(self):
-        """Toggle between maximized and normal window state"""
-        if self.isMaximized():
-            self.showNormal()
-        else:
-            self.showMaximized()
-
-    def toggle_pin_on_top(self):
-        """Toggle whether the window stays on top"""
-        flags = self.windowFlags()
-        if flags & Qt.WindowStaysOnTopHint:
-            self.setWindowFlags(flags & ~Qt.WindowStaysOnTopHint)
-        else:
-            self.setWindowFlags(flags | Qt.WindowStaysOnTopHint)
-        self.show()  # Need to call show() to apply the changed flags
 
     def create_actions(self):
         """Create the application actions"""
@@ -451,7 +414,6 @@ class KaylandGUI(QMainWindow):
                 color: {SYNTHWAVE_COLORS["accent2"]};
                 font-size: 12pt;
                 min-height: 28px;
-                padding-top: 40px; /* Allow space for title bar above */
             }}
         """)
 
@@ -583,6 +545,10 @@ class KaylandGUI(QMainWindow):
         launch_action.triggered.connect(self.launch_app)
         menu.addAction(launch_action)
 
+        delete_action = QAction("Delete", self)
+        delete_action.triggered.connect(self.delete_app)
+        menu.addAction(delete_action)
+
         # Show menu
         menu.exec(global_pos)
 
@@ -654,9 +620,14 @@ class KaylandGUI(QMainWindow):
             self.show_status_message("No application data available", 3000)
             return
 
-        # Handle special case for launch command
+        # Handle special case for launch command - use alias if available, otherwise name
         if attribute == "launch_command":
-            launch_cmd = f"kayland launch {app_data['name']}"
+            aliases = app_data.get("aliases", [])
+            if aliases:
+                # Use the first alias if available
+                launch_cmd = f"kayland launch {aliases[0]}"
+            else:
+                launch_cmd = f"kayland launch {app_data['name']}"
             self.copy_to_clipboard(launch_cmd)
             self.show_status_message(f"Copied launch command to clipboard", 3000)
             return
@@ -689,7 +660,7 @@ class KaylandGUI(QMainWindow):
             apps = self.app_manager.get_all_apps()
 
             # Log debug info
-            self.add_log_entry(f"Refreshing app list, found {len(apps)} apps", "info")
+            self.add_log_entry(f"Refreshing app list, found {len(apps)} apps", "info", log_to_ui=False)
 
             # Clear current list
             self.app_list.clear()
@@ -782,11 +753,22 @@ class KaylandGUI(QMainWindow):
             self.add_log_entry(error_msg, "error")
             self.show_status_message(error_msg, 5000)
 
-    def add_log_entry(self, message: str, level: str = "info") -> None:
+    def add_log_entry(self, message: str, level: str = "info", log_to_ui: bool = True) -> None:
         """Add a log entry to the log display"""
         try:
-            # Use the LogWidget to add entry
-            self.log_display.add_entry(message, level)
+            # Always log to system logger
+            if level == "info":
+                logger.info(message)
+            elif level == "error":
+                logger.error(message)
+            elif level == "warning":
+                logger.warning(message)
+            else:
+                logger.debug(message)
+
+            # Only add to UI if explicitly requested
+            if log_to_ui:
+                self.log_display.add_entry(message, level)
         except Exception as e:
             # If we can't update the log UI, log to system logger
             logger.error(f"Failed to update log UI: {str(e)}")
@@ -815,7 +797,8 @@ class KaylandGUI(QMainWindow):
                     shortcuts = self.app_manager.get_shortcuts()
                     self.app_details.update_shortcuts(shortcuts, self.selected_app_id)
 
-                    self.add_log_entry(f"Selected application: {app_data.get('name')}", "info")
+                    # Don't log selection to UI
+                    self.add_log_entry(f"Selected application: {app_data.get('name')}", "info", log_to_ui=False)
             else:
                 self.selected_app_id = None
                 self.app_details.update_details(None)
@@ -845,7 +828,8 @@ class KaylandGUI(QMainWindow):
                     shortcut = next((s for s in shortcuts if s.get("id") == shortcut_id), None)
 
                     if shortcut:
-                        self.add_log_entry(f"Selected shortcut: {shortcut.get('key', '')}", "info")
+                        # Don't log selection to UI
+                        self.add_log_entry(f"Selected shortcut: {shortcut.get('key', '')}", "info", log_to_ui=False)
             else:
                 self.selected_shortcut_id = None
 
@@ -898,6 +882,50 @@ class KaylandGUI(QMainWindow):
                 self.refresh_shortcut_list()  # Shortcuts might have changed
         except Exception as e:
             self.add_log_entry(f"Error editing application: {str(e)}", "error")
+
+    def delete_app(self):
+        """Delete the selected application"""
+        if not self.selected_app_id:
+            self.show_status_message("No application selected", 3000)
+            return
+
+        try:
+            # Get the app data
+            app = self.app_manager.get_app_by_id(self.selected_app_id)
+            if not app:
+                return
+
+            # Confirm deletion
+            confirm_delete = self.settings.get("confirm_delete", "True") == "True"
+            if confirm_delete:
+                confirm = QMessageBox.question(
+                    self, "Confirm Delete",
+                    f"Are you sure you want to delete {app['name']}?",
+                    QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+                )
+
+                if confirm != QMessageBox.Yes:
+                    return
+
+            # Delete any associated shortcuts first
+            shortcuts = self.app_manager.get_shortcuts()
+            for shortcut in shortcuts:
+                if shortcut.get("app_id") == self.selected_app_id:
+                    self.app_manager.remove_shortcut(shortcut["id"])
+
+            # Delete the app
+            self.app_manager.delete_app(self.selected_app_id)
+            message = f"Deleted app: {app['name']}"
+            self.add_log_entry(message, "success")
+            self.show_status_message(message)
+
+            # Clear selection and refresh
+            self.selected_app_id = None
+            self.refresh_app_list()
+            self.refresh_shortcut_list()
+
+        except Exception as e:
+            self.add_log_entry(f"Error deleting application: {str(e)}", "error")
 
     def copy_app(self):
         """Copy the selected application"""
@@ -1093,7 +1121,7 @@ class KaylandGUI(QMainWindow):
     def closeEvent(self, event):
         """Handle window close event"""
         # Add log entry before closing
-        self.add_log_entry("Kayland GUI shutting down", "info")
+        self.add_log_entry("Kayland GUI shutting down", "info", log_to_ui=False)
 
         # Accept the event to close the window
         event.accept()
